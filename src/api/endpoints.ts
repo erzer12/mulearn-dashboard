@@ -622,6 +622,21 @@ export const endpoints = {
   },
 
   // ============================================
+  // Impact Projects Endpoints
+  // Base: /api/v1/dashboard/ig/<ig_id>/impact-projects/
+  // ============================================
+  impactProjects: {
+    /** GET - List impact projects for an IG | POST - Create one */
+    list: (igId: string) => `/api/v1/dashboard/ig/${igId}/impact-projects/`,
+    /** PATCH - Update | DELETE - Remove */
+    detail: (igId: string, projectId: string) =>
+      `/api/v1/dashboard/ig/${igId}/impact-projects/${projectId}/`,
+    /** POST - Upload/replace project image (multipart, field: image) */
+    image: (igId: string, projectId: string) =>
+      `/api/v1/dashboard/ig/${igId}/impact-projects/${projectId}/image/`,
+  },
+
+  // ============================================
   // College Endpoints
   // ============================================
   college: {
@@ -779,6 +794,9 @@ export const endpoints = {
     /** POST/GET/DELETE - Meeting report (organizer) */
     meetingReport: (id: string) =>
       `/api/v1/dashboard/learningcircle/meeting/report/${id}/`,
+    /** GET - Export meeting attendees as CSV (owner/lead only) */
+    meetingReportExport: (id: string) =>
+      `/api/v1/dashboard/learningcircle/meeting/report/export/${id}/`,
   },
 
   // ============================================
@@ -953,7 +971,8 @@ export const endpoints = {
       organizations: "/api/v1/dashboard/task/organization/",
       channels: "/api/v1/dashboard/task/channel/",
       types: "/api/v1/dashboard/task/task-types/",
-      events: "/api/v1/dashboard/task/events/",
+      /** GET - Linkable events for the task "Event" picker (id, title, start_datetime) */
+      events: "/api/v1/dashboard/events/meta/linkable-events/",
       skills: "/api/v1/dashboard/skill/dropdown/",
     },
 
@@ -987,6 +1006,12 @@ export const endpoints = {
 
       /** PATCH - Update IG request status */
       requestUpdate: (id: string) => `/api/v1/dashboard/ig/request/${id}/`,
+
+      /** POST/DELETE - Upload/replace or remove an IG's cover image (multipart, field "image") */
+      coverImage: (id: string) => `/api/v1/dashboard/ig/${id}/cover-image/`,
+
+      /** POST/DELETE - Upload/replace or remove an IG's icon image (multipart, field "image") */
+      iconImage: (id: string) => `/api/v1/dashboard/ig/${id}/icon-image/`,
     },
   },
 

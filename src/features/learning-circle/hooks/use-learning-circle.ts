@@ -14,6 +14,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { useMemo } from "react";
 import { toast } from "sonner";
 import { getApiResponseError } from "@/hooks/use-get-error";
 import {
@@ -31,7 +32,6 @@ import {
   getCircleMeetings,
   getCircleMembers,
   getCircles,
-  getColleges,
   getInviteByLink,
   getJoinRequests,
   getMeetingDetail,
@@ -39,6 +39,7 @@ import {
   getMyPendingInvites,
   getPublicMeetings,
   getSentInvites,
+  getUserCircles,
   getUserMeetings,
   joinCircle,
   joinMeeting,
@@ -70,32 +71,66 @@ import { learningCircleKeys } from "./query-keys";
 const STALE_TIME = 5 * 60 * 1000; // 5 minutes
 
 // ============================================
-// Form Dropdown Queries
+// Circle Queries
 // ============================================
 
-export function useColleges(params?: {
-  page?: number;
-  perPage?: number;
-  search?: string;
-}) {
+const CIRCLES_PER_PAGE = 12;
+
+export function useCircles(search = "", page = 1) {
   return useQuery({
-    queryKey: learningCircleKeys.colleges(params),
-    queryFn: () => getColleges(params),
+    queryKey: learningCircleKeys.circleList({ search, page }),
+    queryFn: () =>
+      getCircles({
+        search: search || undefined,
+        page,
+        perPage: CIRCLES_PER_PAGE,
+      }),
     placeholderData: keepPreviousData,
     staleTime: STALE_TIME,
   });
 }
 
-// ============================================
-// Circle Queries
-// ============================================
-
-export function useCircles() {
+export function useUserCircles() {
   return useQuery({
-    queryKey: learningCircleKeys.circleList(),
-    queryFn: getCircles,
+    queryKey: learningCircleKeys.userCircles(),
+    queryFn: getUserCircles,
     staleTime: STALE_TIME,
   });
+}
+
+export function useActiveInvites() {
+  const {
+    data: invites,
+    isLoading: invitesLoading,
+    error: invitesError,
+  } = useMyPendingInvites();
+  const {
+    data: userCircles,
+    isLoading: circlesLoading,
+    error: circlesError,
+  } = useUserCircles();
+
+  const joinedCircleIds = useMemo(() => {
+    return new Set(userCircles?.map((c) => c.id) ?? []);
+  }, [userCircles]);
+
+  const activeInvites = useMemo(() => {
+    if (!invites) return [];
+    return invites.filter((inv) => {
+      if (!inv.circle_id) return true;
+      return !joinedCircleIds.has(inv.circle_id);
+    });
+  }, [invites, joinedCircleIds]);
+
+  const activeInvitesCount = activeInvites.length;
+
+  return {
+    activeInvites,
+    activeInvitesCount,
+    joinedCircleIds,
+    isLoading: invitesLoading || circlesLoading,
+    isError: !!(invitesError || circlesError),
+  };
 }
 
 export function useCircleDetail(circleId: string) {
@@ -175,7 +210,8 @@ export function useCreateCircle() {
     mutationFn: (data: CreateCircleRequest) => createCircle(data),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: learningCircleKeys.circleList(),
+        queryKey: [...learningCircleKeys.circles(), "list"],
+        exact: false,
       });
       toast.success("Learning circle created successfully!");
     },
@@ -199,7 +235,8 @@ export function useEditCircle(circleId: string) {
         queryKey: learningCircleKeys.circleDetail(circleId),
       });
       queryClient.invalidateQueries({
-        queryKey: learningCircleKeys.circleList(),
+        queryKey: [...learningCircleKeys.circles(), "list"],
+        exact: false,
       });
       toast.success("Circle updated successfully");
     },
@@ -218,7 +255,8 @@ export function useDeleteCircle() {
     mutationFn: (circleId: string) => deleteCircle(circleId),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: learningCircleKeys.circleList(),
+        queryKey: [...learningCircleKeys.circles(), "list"],
+        exact: false,
       });
       toast.success("Circle deleted successfully");
     },
@@ -398,7 +436,11 @@ export function useRespondToInvite() {
         queryKey: learningCircleKeys.myPendingInvites(),
       });
       queryClient.invalidateQueries({
-        queryKey: learningCircleKeys.circleList(),
+        queryKey: [...learningCircleKeys.circles(), "list"],
+        exact: false,
+      });
+      queryClient.invalidateQueries({
+        queryKey: learningCircleKeys.userCircles(),
       });
       toast.success("Invite response submitted");
     },
@@ -435,7 +477,11 @@ export function useRespondToInviteByLink() {
         queryKey: learningCircleKeys.myPendingInvites(),
       });
       queryClient.invalidateQueries({
-        queryKey: learningCircleKeys.circleList(),
+        queryKey: [...learningCircleKeys.circles(), "list"],
+        exact: false,
+      });
+      queryClient.invalidateQueries({
+        queryKey: learningCircleKeys.userCircles(),
       });
       toast.success("Invite response submitted");
     },

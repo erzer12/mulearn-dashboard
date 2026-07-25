@@ -123,6 +123,8 @@ export interface MinimalIG {
   id: UUID;
   name: string;
   icon: string;
+  cover_image?: string | null;
+  icon_image?: string | null;
   code?: string;
   logo?: string; // Backward compatibility
   cluster?: IGCluster;
@@ -325,7 +327,7 @@ export interface EventListItem {
   is_collaboration: boolean;
   interest_count: number;
   min_karma: number;
-  tags: Record<string, unknown> | null;
+  tags: string[] | null;
   user_limit: number;
   /** Human-readable category name from the categories API (e.g. "Workshop", "Sprint") */
   category_name: string | null;
@@ -362,7 +364,7 @@ export interface EventDetail {
   is_featured: boolean;
   is_collaboration: boolean;
   interest_count: number;
-  tags: Record<string, unknown> | null;
+  tags: string[] | null;
   user_limit: number;
   linked_tasks: LinkedTask[];
   co_owners: EventCoOwner[];

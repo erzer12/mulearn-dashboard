@@ -33,6 +33,8 @@ import {
   resolveOptionValue,
 } from "./form-utils";
 
+const MAX_INTEREST_GROUPS = 3;
+
 type Props = { id: string; closeModal: () => void; formId?: string };
 
 export const UserForm = forwardRef<
@@ -279,6 +281,16 @@ export const UserForm = forwardRef<
     const currentValues = form.getValues(
       formFieldName as "community" | "roles" | "interest_groups",
     );
+
+    if (
+      checked &&
+      fieldName === "interest_groups" &&
+      currentValues.length >= MAX_INTEREST_GROUPS
+    ) {
+      toast.error(`You can only select ${MAX_INTEREST_GROUPS} interest groups`);
+      return;
+    }
+
     const nextValues = checked
       ? [...new Set([...currentValues, value])]
       : currentValues.filter((item) => item !== value);
@@ -307,10 +319,9 @@ export const UserForm = forwardRef<
         id,
         payload,
       });
-      toast.success("User edited");
       closeModal();
     } catch {
-      toast.error("Failed to edit user");
+      // Handled by useUpdateManageUser's onError toast.
     }
   };
 

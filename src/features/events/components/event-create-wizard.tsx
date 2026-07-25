@@ -25,8 +25,12 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { getApiResponseError } from "@/hooks/use-get-error";
+import { usePermissions } from "@/hooks/use-permissions";
 import { eventsApi } from "../api";
 import {
+  EVENT_BANNER_IMAGE_ASPECT,
+  EVENT_BANNER_IMAGE_MOBILE_PREVIEW_ASPECT,
+  EVENT_COVER_IMAGE_ASPECT,
   EVENT_CREATE_WIZARD_STEPS,
   EVENT_FORM_DEFAULT_VALUES,
   EVENT_SCOPE_OPTIONS,
@@ -187,6 +191,7 @@ async function compressImageForUpload(
 export function EventCreateWizard({ open, onClose }: EventCreateWizardProps) {
   const createEvent = useCreateEvent();
   const organizerOptionsQuery = useOrganizerOptions();
+  const { can } = usePermissions();
   const { data: clusterOptions, isLoading: clustersLoading } = useIGClusters();
   const { data: categoryOptions, isLoading: categoriesLoading } =
     useEventCategories();
@@ -237,19 +242,27 @@ export function EventCreateWizard({ open, onClose }: EventCreateWizardProps) {
     }
   }, [clusterOptions, watch, setValue]);
 
-  // Auto-select the "others" event type when categories load
+  // Default to "others", mirroring Event.event_type's server-side default.
+  // This must not depend on categoryOptions — that table is empty, which used
+  // to leave event_type unset and the form permanently invalid.
   useEffect(() => {
-    if (!watch("category") && categoryOptions && categoryOptions.length > 0) {
-      const othersCat =
-        categoryOptions.find((c) => {
-          if (typeof c.name !== "string") return false;
-          const catSlug = c.name.trim().toLowerCase().replace(/\s+/g, "_");
-          return catSlug === "others" || catSlug === "other";
-        }) || categoryOptions[0];
-      if (othersCat) {
-        setValue("category", othersCat.id, { shouldDirty: false });
-        setValue("event_type", "others", { shouldDirty: false });
-      }
+    if (!watch("event_type")) {
+      setValue("event_type", "others", { shouldDirty: false });
+    }
+  }, [watch, setValue]);
+
+  // Opportunistically mirror the choice onto the legacy category FK, for as
+  // long as those rows exist. Absence is fine: the API allows a null category.
+  useEffect(() => {
+    const eventType = watch("event_type");
+    if (!eventType || watch("category") || !categoryOptions?.length) return;
+
+    const matching = categoryOptions.find((c) => {
+      if (typeof c.name !== "string") return false;
+      return c.name.trim().toLowerCase().replace(/\s+/g, "_") === eventType;
+    });
+    if (matching) {
+      setValue("category", matching.id, { shouldDirty: false });
     }
   }, [categoryOptions, watch, setValue]);
 
@@ -283,12 +296,28 @@ export function EventCreateWizard({ open, onClose }: EventCreateWizardProps) {
       });
     }
 
-    if (data.can_create_as_admin) {
+    const isAdmin = can("events:create_as_admin");
+    if (data.can_create_as_admin && isAdmin) {
       list.push({ label: "Admin", type: "admin", id: "" });
     }
 
+    const isEnabler = can("events:create_as_enabler");
+
+    if (isEnabler && data.campus_context) {
+      const alreadyHasCampus = list.some(
+        (c) => c.type === "campus" && c.id === data.campus_context?.id,
+      );
+      if (!alreadyHasCampus) {
+        list.push({
+          label: data.campus_context.title ?? "Campus",
+          type: "campus",
+          id: data.campus_context.id,
+        });
+      }
+    }
+
     return list;
-  }, [organizerOptionsQuery.data]);
+  }, [organizerOptionsQuery.data, can]);
 
   const selectedOrganiser = organizerOptions.find(
     (item) => `${item.type}:${item.id}` === selectedOrganiserId,
@@ -376,12 +405,14 @@ export function EventCreateWizard({ open, onClose }: EventCreateWizardProps) {
     onClose();
   };
 
-  const validateCurrentStep = async (): Promise<boolean> => {
-    if (currentStep === 1) {
-      return trigger(["title", "description", "event_scope", "category"]);
+  const validateStep = async (
+    stepIndex: number = currentStep,
+  ): Promise<boolean> => {
+    if (stepIndex === 1) {
+      return trigger(["title", "description", "event_scope", "event_type"]);
     }
 
-    if (currentStep === 2) {
+    if (stepIndex === 2) {
       if (!selectedOrganiser) {
         setOrganiserError("Select an organiser before proceeding");
         return false;
@@ -399,7 +430,7 @@ export function EventCreateWizard({ open, onClose }: EventCreateWizardProps) {
       return trigger(["scope"]);
     }
 
-    if (currentStep === 3) {
+    if (stepIndex === 3) {
       const fields: Array<keyof CreateEventSchema> = [
         "start_datetime",
         "end_datetime",
@@ -535,6 +566,25 @@ export function EventCreateWizard({ open, onClose }: EventCreateWizardProps) {
     }
 
     return true;
+  };
+
+  const handleStepClick = async (targetStep: number) => {
+    if (targetStep === currentStep) return;
+
+    if (targetStep < currentStep) {
+      setCurrentStep(targetStep);
+      return;
+    }
+
+    // Forward jump - validate sequentially
+    for (let step = currentStep; step < targetStep; step++) {
+      const isValid = await validateStep(step);
+      if (!isValid) {
+        setCurrentStep(step);
+        return;
+      }
+    }
+    setCurrentStep(targetStep);
   };
 
   const addTag = () => {
@@ -688,28 +738,47 @@ export function EventCreateWizard({ open, onClose }: EventCreateWizardProps) {
 
               return (
                 <Fragment key={label}>
-                  <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => handleStepClick(stepIndex)}
+                    className={`flex items-center gap-3 text-left focus:outline-none transition-all duration-200 ${
+                      isActive
+                        ? "cursor-default pointer-events-none"
+                        : "cursor-pointer hover:opacity-80"
+                    }`}
+                  >
                     {isActive ? (
                       <Button
+                        asChild
                         variant="default"
                         size="icon-sm"
-                        className="ring-2 ring-brand-blue ring-offset-2"
-                        disabled
+                        className="ring-2 ring-brand-blue ring-offset-2 pointer-events-none shrink-0"
                       >
-                        {stepIndex}
+                        <span className="flex items-center justify-center">
+                          {stepIndex}
+                        </span>
                       </Button>
                     ) : isCompleted ? (
                       <Button
+                        asChild
                         variant="default"
                         size="icon-sm"
-                        aria-label={`Go to step ${stepIndex}: ${label}`}
-                        onClick={() => setCurrentStep(stepIndex)}
+                        className="pointer-events-none shrink-0"
                       >
-                        <Check className="h-4 w-4" />
+                        <span className="flex items-center justify-center">
+                          <Check className="h-4 w-4" />
+                        </span>
                       </Button>
                     ) : (
-                      <Button variant="secondary" size="icon-sm" disabled>
-                        {stepIndex}
+                      <Button
+                        asChild
+                        variant="secondary"
+                        size="icon-sm"
+                        className="pointer-events-none shrink-0"
+                      >
+                        <span className="flex items-center justify-center">
+                          {stepIndex}
+                        </span>
                       </Button>
                     )}
                     <div className="min-w-0 pt-1">
@@ -719,7 +788,7 @@ export function EventCreateWizard({ open, onClose }: EventCreateWizardProps) {
                         {label}
                       </p>
                     </div>
-                  </div>
+                  </button>
                   {index < EVENT_CREATE_WIZARD_STEPS.length - 1 ? (
                     <div
                       className={`h-0.5 flex-1 self-center ${isCompleted ? "bg-primary" : "bg-border"}`}
@@ -769,6 +838,7 @@ export function EventCreateWizard({ open, onClose }: EventCreateWizardProps) {
                     </p>
                     <Textarea
                       rows={4}
+                      maxLength={5000}
                       className="rounded-xl border-border bg-background"
                       {...register("description")}
                     />
@@ -851,16 +921,11 @@ export function EventCreateWizard({ open, onClose }: EventCreateWizardProps) {
                     </p>
                     <Controller
                       control={control}
-                      name="category"
+                      name="event_type"
                       render={({ field }) => {
-                        const eventTypeValue = watch("event_type");
-                        const selectedType =
-                          eventTypeSelectOptions.find(
-                            (item) => item.value === eventTypeValue,
-                          ) ??
-                          eventTypeSelectOptions.find(
-                            (item) => item.value === "others",
-                          );
+                        const selectedType = eventTypeSelectOptions.find(
+                          (item) => item.value === field.value,
+                        );
 
                         const isLoadingOptions =
                           categoriesLoading || typeScopeLoading;
@@ -919,13 +984,20 @@ export function EventCreateWizard({ open, onClose }: EventCreateWizardProps) {
                                             ) ||
                                             categoryOptions?.[0];
 
+                                          // event_type is the field that counts:
+                                          // it maps to Event.EventType on the
+                                          // backend. category is a nullable FK
+                                          // to a lookup table that duplicates
+                                          // the same enum, so set it only if a
+                                          // matching row happens to exist.
+                                          field.onChange(item.value);
                                           if (matchingCat) {
-                                            field.onChange(matchingCat.id);
+                                            setValue(
+                                              "category",
+                                              matchingCat.id,
+                                              { shouldDirty: true },
+                                            );
                                           }
-                                          setValue("event_type", item.value, {
-                                            shouldDirty: true,
-                                            shouldValidate: true,
-                                          });
                                         }}
                                         className="flex items-center justify-between rounded-md px-3 py-2"
                                       >
@@ -943,9 +1015,9 @@ export function EventCreateWizard({ open, onClose }: EventCreateWizardProps) {
                         );
                       }}
                     />
-                    {errors.category?.message ? (
+                    {errors.event_type?.message ? (
                       <p className="text-xs text-destructive">
-                        {errors.category.message}
+                        {errors.event_type.message}
                       </p>
                     ) : null}
                   </div>
@@ -955,6 +1027,7 @@ export function EventCreateWizard({ open, onClose }: EventCreateWizardProps) {
                     <div className="flex gap-2">
                       <Input
                         value={tagInput}
+                        maxLength={30}
                         onChange={(e) => setTagInput(e.target.value)}
                         onKeyDown={(e) => {
                           if (e.key === "Enter" || e.key === ",") {
@@ -1243,6 +1316,7 @@ export function EventCreateWizard({ open, onClose }: EventCreateWizardProps) {
                       <ImageUpload
                         value={coverImageFile}
                         onChange={setCoverImageFile}
+                        aspectRatio={EVENT_COVER_IMAGE_ASPECT}
                       />
                     </div>
                     <div className="space-y-2">
@@ -1252,6 +1326,8 @@ export function EventCreateWizard({ open, onClose }: EventCreateWizardProps) {
                       <ImageUpload
                         value={bannerImageFile}
                         onChange={setBannerImageFile}
+                        aspectRatio={EVENT_BANNER_IMAGE_ASPECT}
+                        previewAspect={EVENT_BANNER_IMAGE_MOBILE_PREVIEW_ASPECT}
                       />
                     </div>
                   </div>
@@ -1423,7 +1499,7 @@ export function EventCreateWizard({ open, onClose }: EventCreateWizardProps) {
                 {currentStep < 6 ? (
                   <Button
                     onClick={async () => {
-                      const ok = await validateCurrentStep();
+                      const ok = await validateStep();
                       if (!ok) return;
                       setCurrentStep((value) => Math.min(6, value + 1));
                     }}

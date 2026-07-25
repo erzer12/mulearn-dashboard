@@ -38,12 +38,14 @@ import {
   MeetingListResponseSchema,
   type MeetingReportRequest,
   MeetingReportResponseSchema,
+  type Pagination,
   type PublicMeetingListResponse,
   PublicMeetingListResponseSchema,
   type RespondJoinRequest,
   type SendInviteRequest,
   type TransferLeadRequest,
   type UserBasic,
+  UserCircleListResponseSchema,
 } from "../schemas";
 
 // ============================================
@@ -72,13 +74,25 @@ export async function getColleges(params?: {
 // Circle Management
 // ============================================
 
-/** Get all learning circles */
-export async function getCircles(): Promise<LearningCircle[]> {
-  const response = await apiClient.get(
-    endpoints.learningCircle.list,
-    CircleListResponseSchema,
-  );
-  return response.response.data;
+/** Get all learning circles (paginated) */
+export async function getCircles(params?: {
+  page?: number;
+  perPage?: number;
+  search?: string;
+}): Promise<{ circles: LearningCircle[]; pagination: Pagination }> {
+  const searchParams = new URLSearchParams();
+  if (params?.page) searchParams.set("pageIndex", String(params.page));
+  if (params?.perPage) searchParams.set("perPage", String(params.perPage));
+  if (params?.search) searchParams.set("search", params.search);
+
+  const url = searchParams.toString()
+    ? `${endpoints.learningCircle.list}?${searchParams}`
+    : endpoints.learningCircle.list;
+  const response = await apiClient.get(url, CircleListResponseSchema);
+  return {
+    circles: response.response.data,
+    pagination: response.response.pagination,
+  };
 }
 
 /** Get circle details */
@@ -227,7 +241,7 @@ export async function getMyPendingInvites(): Promise<Invite[]> {
   return response.response;
 }
 
-/** Accept or reject an invite (no link_id) */
+/** Accept or reject an invite */
 export async function respondToInvite(
   data: InviteResponseRequest & { id: string },
 ): Promise<void> {
@@ -462,4 +476,13 @@ export async function deleteMeetingReport(meetingId: string): Promise<void> {
     endpoints.learningCircle.meetingReport(meetingId),
     EmptyResponseSchema,
   );
+}
+
+/** Get learning circles the current user has joined */
+export async function getUserCircles(): Promise<LearningCircle[]> {
+  const response = await apiClient.get(
+    endpoints.learningCircle.userCircles,
+    UserCircleListResponseSchema,
+  );
+  return response.response;
 }

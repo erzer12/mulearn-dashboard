@@ -27,7 +27,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useInterestGroupsList } from "@/features/interest-groups";
 import { useGuilds } from "@/features/intern";
-import { useColleges } from "@/features/onboarding";
+import { useCollegeSearch } from "@/features/onboarding";
 import { useDebounce } from "@/hooks/use-debounce";
 import type { BulkAssignExtraPayload } from "../api/manage-roles.api";
 import {
@@ -78,6 +78,7 @@ function SingleTab({ role }: { role: Role }) {
   const [mentorTier, setMentorTier] = useState("");
   const [selectedIgs, setSelectedIgs] = useState<string[]>([]);
   const [orgId, setOrgId] = useState("");
+  const [collegeSearch, setCollegeSearch] = useState("");
 
   const lowerTitle = role.title.toLowerCase();
   const isIntern = lowerTitle.includes("intern");
@@ -90,6 +91,7 @@ function SingleTab({ role }: { role: Role }) {
     setMentorTier("");
     setSelectedIgs([]);
     setOrgId("");
+    setCollegeSearch("");
   }, [selectedUser?.id, role.id]);
 
   // Sync: Reset IG/org selections when mentorTier changes
@@ -97,13 +99,21 @@ function SingleTab({ role }: { role: Role }) {
   useEffect(() => {
     setSelectedIgs([]);
     setOrgId("");
+    setCollegeSearch("");
   }, [mentorTier]);
 
   // Queries for dynamic dropdowns (enabled conditionally based on role/tier)
-  const { data: colleges = [], isLoading: isLoadingColleges } = useColleges();
-  const { data: igsResponse, isLoading: isLoadingIgs } =
-    useInterestGroupsList();
-  const { data: guilds = [], isLoading: isLoadingGuilds } = useGuilds();
+  const { data: colleges = [], isFetching: isLoadingColleges } =
+    useCollegeSearch(collegeSearch);
+  const { data: igsResponse, isLoading: isLoadingIgs } = useInterestGroupsList(
+    undefined,
+    {
+      enabled: Boolean(selectedUser) && isMentor && mentorTier === "IG_MENTOR",
+    },
+  );
+  const { data: guilds = [], isLoading: isLoadingGuilds } = useGuilds({
+    enabled: Boolean(selectedUser) && isIntern,
+  });
 
   // Map guilds to Combobox options format
   const guildOptions = useMemo(() => {
@@ -347,14 +357,16 @@ function SingleTab({ role }: { role: Role }) {
                     options={colleges}
                     value={orgId}
                     onValueChange={setOrgId}
-                    placeholder={
-                      isLoadingColleges
-                        ? "Loading colleges..."
-                        : "Search college..."
-                    }
+                    onSearchChange={setCollegeSearch}
+                    loading={isLoadingColleges}
+                    placeholder="Search college..."
                     searchPlaceholder="Search colleges..."
-                    emptyText="No colleges found."
-                    disabled={assignMutation.isPending || isLoadingColleges}
+                    emptyText={
+                      collegeSearch.trim().length < 2
+                        ? "Type your college to search"
+                        : "No colleges found."
+                    }
+                    disabled={assignMutation.isPending}
                   />
                 </div>
               )}
@@ -416,6 +428,7 @@ function BulkAddTab({ role }: { role: Role }) {
   const [mentorTier, setMentorTier] = useState("");
   const [selectedIgs, setSelectedIgs] = useState<string[]>([]);
   const [orgId, setOrgId] = useState("");
+  const [collegeSearch, setCollegeSearch] = useState("");
 
   const lowerTitle = role.title.toLowerCase();
   const isIntern = lowerTitle.includes("intern");
@@ -428,6 +441,7 @@ function BulkAddTab({ role }: { role: Role }) {
     setMentorTier("");
     setSelectedIgs([]);
     setOrgId("");
+    setCollegeSearch("");
   }, [role.id, selectedUsers.length === 0]);
 
   // Sync: Reset IG/org selections when mentorTier changes
@@ -435,13 +449,22 @@ function BulkAddTab({ role }: { role: Role }) {
   useEffect(() => {
     setSelectedIgs([]);
     setOrgId("");
+    setCollegeSearch("");
   }, [mentorTier]);
 
   // Queries for dynamic dropdowns (enabled conditionally based on role/tier)
-  const { data: colleges = [], isLoading: isLoadingColleges } = useColleges();
-  const { data: igsResponse, isLoading: isLoadingIgs } =
-    useInterestGroupsList();
-  const { data: guilds = [], isLoading: isLoadingGuilds } = useGuilds();
+  const { data: colleges = [], isFetching: isLoadingColleges } =
+    useCollegeSearch(collegeSearch);
+  const { data: igsResponse, isLoading: isLoadingIgs } = useInterestGroupsList(
+    undefined,
+    {
+      enabled:
+        selectedUsers.length > 0 && isMentor && mentorTier === "IG_MENTOR",
+    },
+  );
+  const { data: guilds = [], isLoading: isLoadingGuilds } = useGuilds({
+    enabled: selectedUsers.length > 0 && isIntern,
+  });
 
   // Map guilds to Combobox options format
   const guildOptions = useMemo(() => {
@@ -637,14 +660,16 @@ function BulkAddTab({ role }: { role: Role }) {
                     options={colleges}
                     value={orgId}
                     onValueChange={setOrgId}
-                    placeholder={
-                      isLoadingColleges
-                        ? "Loading colleges..."
-                        : "Search college..."
-                    }
+                    onSearchChange={setCollegeSearch}
+                    loading={isLoadingColleges}
+                    placeholder="Search college..."
                     searchPlaceholder="Search colleges..."
-                    emptyText="No colleges found."
-                    disabled={bulkAssign.isPending || isLoadingColleges}
+                    emptyText={
+                      collegeSearch.trim().length < 2
+                        ? "Type your college to search"
+                        : "No colleges found."
+                    }
+                    disabled={bulkAssign.isPending}
                   />
                 </div>
               )}

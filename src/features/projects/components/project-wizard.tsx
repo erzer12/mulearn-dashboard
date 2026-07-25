@@ -11,7 +11,7 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { Fragment, useState } from "react";
+import { type ChangeEvent, Fragment, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -33,7 +33,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { getApiResponseError } from "@/hooks/use-get-error";
+import {
+  MAX_IMAGE_UPLOAD_LABEL,
+  validateImageFile,
+} from "@/lib/constants/upload";
+import { cn } from "@/lib/utils";
 import {
   type Project,
   ProjectFormSchema,
@@ -109,6 +113,34 @@ export function ProjectWizard({
 
   const totalSteps = STEPS.length;
 
+  const handleLogoChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    const error = validateImageFile(file);
+    if (error) {
+      toast.error(error);
+      return;
+    }
+    setLogo(file);
+  };
+
+  const handleImagesChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    if (files.length === 0) return;
+    const valid: File[] = [];
+    for (const file of files) {
+      const error = validateImageFile(file);
+      if (error) {
+        toast.error(`${file.name}: ${error}`);
+        continue;
+      }
+      valid.push(file);
+    }
+    if (valid.length > 0) setImages(valid);
+  };
+
   const linkedMemberMuids = members
     .filter((m) => m.is_linked && m.muid)
     .map((m) => m.muid as string);
@@ -139,6 +171,8 @@ export function ProjectWizard({
       }
       if (!values.description || values.description.trim().length === 0) {
         errors.push("Description is required");
+      } else if (values.description.trim().length < 50) {
+        errors.push("Description must be at least 50 characters");
       }
       // status always has a valid default ("published") via the Select —
       // no manual check needed; the Zod enum catches invalid values.
@@ -152,6 +186,9 @@ export function ProjectWizard({
       // Write the cleaned list back so submit doesn't send empty rows
       if (links.length !== values.links.length) {
         form.setValue("links", links, { shouldDirty: true });
+      }
+      if (links.length < 2) {
+        errors.push("At least 2 links are required");
       }
       // Validate remaining links
       for (let i = 0; i < links.length; i++) {
@@ -215,8 +252,8 @@ export function ProjectWizard({
         setCreatedProject(result as Project);
       }
       setShowSuccess(true);
-    } catch (err) {
-      toast.error(getApiResponseError(err, { fallback: "Save failed" }));
+    } catch {
+      // Handled by the mutation hook's onError toast.
     }
   };
 
@@ -282,21 +319,25 @@ export function ProjectWizard({
 
                   return (
                     <Fragment key={label}>
-                      <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        aria-label={`Go to step ${stepIndex}: ${label}`}
+                        aria-current={isActive ? "step" : undefined}
+                        onClick={() => setCurrentStep(stepIndex)}
+                        className="group flex cursor-pointer items-center gap-3 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                      >
                         <Button
                           type="button"
                           size="icon-sm"
-                          onClick={() =>
-                            isCompleted && setCurrentStep(stepIndex)
-                          }
                           variant={
                             isActive || isCompleted ? "default" : "secondary"
                           }
-                          className={
+                          className={cn(
+                            "pointer-events-none",
                             isActive
                               ? "ring-2 ring-brand-blue ring-offset-2"
-                              : undefined
-                          }
+                              : undefined,
+                          )}
                         >
                           {isCompleted ? (
                             <Check className="h-4 w-4" />
@@ -306,16 +347,17 @@ export function ProjectWizard({
                         </Button>
                         <div className="min-w-0 pt-1">
                           <p
-                            className={`text-xs whitespace-nowrap leading-none ${
+                            className={cn(
+                              "text-xs whitespace-nowrap leading-none transition-colors",
                               isActive
                                 ? "font-medium text-primary"
-                                : "text-muted-foreground"
-                            }`}
+                                : "text-muted-foreground group-hover:text-foreground",
+                            )}
                           >
                             {label}
                           </p>
                         </div>
-                      </div>
+                      </button>
                       {index < STEPS.length - 1 ? (
                         <div
                           className={`h-0.5 flex-1 self-center ${
@@ -428,13 +470,24 @@ export function ProjectWizard({
                       control={form.control}
                       name="description"
                       render={({ field }) => (
-                        <MarkdownEditor
-                          value={field.value}
-                          onChange={field.onChange}
-                          placeholder="Describe your project using Markdown…"
-                          rows={10}
-                          error={form.formState.errors.description?.message}
-                        />
+                        <>
+                          <MarkdownEditor
+                            value={field.value}
+                            onChange={field.onChange}
+                            placeholder="Describe your project using Markdown…"
+                            rows={10}
+                            error={form.formState.errors.description?.message}
+                          />
+                          <p
+                            className={`text-[12px] ${
+                              field.value.trim().length < 50
+                                ? "text-muted-foreground"
+                                : "text-success"
+                            }`}
+                          >
+                            {field.value.trim().length}/50 characters minimum
+                          </p>
+                        </>
                       )}
                     />
                   </div>
@@ -483,12 +536,12 @@ export function ProjectWizard({
                       type="file"
                       accept="image/*"
                       className="rounded-xl"
-                      onChange={(e) => setLogo(e.target.files?.[0])}
+                      onChange={handleLogoChange}
                     />
                     <p className="text-[12px] text-muted-foreground">
                       {logo
                         ? `Selected: ${logo.name}`
-                        : "Square image recommended (PNG, JPG)"}
+                        : `Square image recommended · ${MAX_IMAGE_UPLOAD_LABEL} · JPG, PNG, WebP`}
                     </p>
                   </div>
 
@@ -507,7 +560,7 @@ export function ProjectWizard({
                               key={img.image}
                               className="relative aspect-video rounded-lg overflow-hidden border bg-muted"
                             >
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              {/* biome-ignore lint/performance/noImgElement: remote screenshot URL, not eligible for next/image domains config */}
                               <img
                                 src={`${process.env.NEXT_PUBLIC_DJANGO_API_URL ?? ""}${img.image.startsWith("http") ? img.image.replace(/^https?:\/\/[^/]+/, "") : img.image}`}
                                 alt="Screenshot"
@@ -526,7 +579,7 @@ export function ProjectWizard({
                             key={`${file.name}-${file.lastModified}`}
                             className="relative aspect-video rounded-lg overflow-hidden border bg-muted group"
                           >
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            {/* biome-ignore lint/performance/noImgElement: local blob preview URL, not eligible for next/image */}
                             <img
                               src={URL.createObjectURL(file)}
                               alt={file.name}
@@ -558,30 +611,41 @@ export function ProjectWizard({
                           ? `${images.length} selected — click to replace`
                           : project?.images?.length
                             ? `${project.images.length} existing — upload new to replace all`
-                            : "Add screenshots (PNG, JPG · multiple allowed)"}
+                            : `Add screenshots · ${MAX_IMAGE_UPLOAD_LABEL} each · JPG, PNG, WebP · multiple allowed`}
                       </span>
                       <input
                         type="file"
                         accept="image/*"
                         multiple
                         className="sr-only"
-                        onChange={(e) =>
-                          setImages(Array.from(e.target.files ?? []))
-                        }
+                        onChange={handleImagesChange}
                       />
                     </label>
                   </div>
 
                   <div className="space-y-2">
-                    <Label className="text-[13px] font-medium">Links</Label>
+                    <Label className="text-[13px] font-medium">
+                      Links <span className="text-destructive">*</span>
+                    </Label>
                     <Controller
                       control={form.control}
                       name="links"
                       render={({ field }) => (
-                        <ProjectLinksEditor
-                          value={field.value}
-                          onChange={field.onChange}
-                        />
+                        <>
+                          <ProjectLinksEditor
+                            value={field.value}
+                            onChange={field.onChange}
+                          />
+                          <p
+                            className={`text-[12px] ${
+                              field.value.length < 2
+                                ? "text-muted-foreground"
+                                : "text-success"
+                            }`}
+                          >
+                            {field.value.length}/2 links minimum
+                          </p>
+                        </>
                       )}
                     />
                   </div>

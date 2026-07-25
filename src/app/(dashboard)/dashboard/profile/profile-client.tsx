@@ -50,12 +50,15 @@ import {
   ChangeOrganizationRequestSchema,
 } from "@/features/settings";
 import { ROLES } from "@/lib/auth/roles";
+import { useUIStore } from "@/stores/ui-store";
 
 export function ProfilePageClient() {
   const [activeTab, setActiveTab] = useState<ProfileTab>("basic-details");
   const [lastSavedDepartmentId, setLastSavedDepartmentId] = useState("");
-  // Toggle: true = show standard learner view even if user is a mentor
-  const [showLearnerView, setShowLearnerView] = useState(false);
+  // Persisted toggle: "learner" = show standard learner view even if user is a mentor.
+  // Stored in ui-store so it survives tab navigation and remounts.
+  const { profileViewMode, setProfileViewMode } = useUIStore();
+  const showLearnerView = profileViewMode === "learner";
 
   // Modal states
   const [showEditProfile, setShowEditProfile] = useState(false);
@@ -90,8 +93,12 @@ export function ProfilePageClient() {
 
   const updateProfileMutation = useUpdateProfile({ suppressErrorToast: true });
   const { data: editableProfile } = useEditableProfile();
-  const changeOrganizationMutation = useEditCollege();
-  const updateProfileImageMutation = useUpdateProfileImage();
+  const changeOrganizationMutation = useEditCollege({
+    suppressErrorToast: true,
+  });
+  const updateProfileImageMutation = useUpdateProfileImage({
+    suppressErrorToast: true,
+  });
   const uploadCoverPicMutation = useUploadCoverPic();
   const deleteCoverPicMutation = useDeleteCoverPic();
   const { data: userLog, isLoading: isLoadingLog } = useUserLog();
@@ -224,7 +231,9 @@ export function ProfilePageClient() {
   // Mentor users see the mentor profile by default, with a toggle to switch back
   if (isMentor && mentorProfile) {
     return (
-      <MentorProfilePage onSwitchToLearner={() => setShowLearnerView(true)} />
+      <MentorProfilePage
+        onSwitchToLearner={() => setProfileViewMode("learner")}
+      />
     );
   }
 
@@ -261,7 +270,7 @@ export function ProfilePageClient() {
           }
           onSwitchToMentor={
             profile?.roles.includes(ROLES.MENTOR) && isVerifiedMentor
-              ? () => setShowLearnerView(false)
+              ? () => setProfileViewMode("mentor")
               : undefined
           }
         />
@@ -272,15 +281,7 @@ export function ProfilePageClient() {
       </div>
 
       <div className="grid w-full max-w-full gap-4 sm:gap-6 lg:grid-cols-3">
-        <div className="w-full max-w-full overflow-x-hidden lg:order-2 lg:col-span-1">
-          <ProfileSidebar
-            profile={profile}
-            isOwnProfile={true}
-            onAccountSettings={() => setShowAccountSettings(true)}
-          />
-        </div>
-
-        <div className="w-full max-w-full space-y-4 overflow-x-hidden lg:order-1 lg:col-span-2">
+        <div className="w-full max-w-full space-y-4 overflow-x-hidden lg:col-span-2">
           <ProfileTabs activeTab={activeTab} onTabChange={setActiveTab} />
 
           <div className="w-full max-w-full overflow-x-hidden">
@@ -322,6 +323,14 @@ export function ProfilePageClient() {
               />
             )}
           </div>
+        </div>
+
+        <div className="w-full max-w-full overflow-x-hidden lg:col-span-1">
+          <ProfileSidebar
+            profile={profile}
+            isOwnProfile={true}
+            onAccountSettings={() => setShowAccountSettings(true)}
+          />
         </div>
       </div>
 

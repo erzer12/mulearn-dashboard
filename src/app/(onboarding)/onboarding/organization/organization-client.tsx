@@ -7,15 +7,15 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { toast } from "sonner";
 import {
   OrganizationForm,
-  useColleges,
+  useCollegeSearch,
   useCompanies,
-  useDepartments,
+  useDepartmentSearch,
   useSelectOrganization,
 } from "@/features/onboarding";
-import { getApiResponseError } from "@/hooks/use-get-error";
 
 interface OrganizationClientProps {
   redirectUri?: string;
@@ -24,8 +24,10 @@ interface OrganizationClientProps {
 export function OrganizationClient({ redirectUri }: OrganizationClientProps) {
   const router = useRouter();
 
-  const colleges = useColleges();
-  const departments = useDepartments();
+  const [collegeSearch, setCollegeSearch] = useState("");
+  const [departmentSearch, setDepartmentSearch] = useState("");
+  const colleges = useCollegeSearch(collegeSearch);
+  const departments = useDepartmentSearch(departmentSearch);
   const companies = useCompanies();
   const selectOrganization = useSelectOrganization();
 
@@ -50,12 +52,8 @@ export function OrganizationClient({ redirectUri }: OrganizationClientProps) {
         ? `/onboarding/interests?ruri=${redirectUri}`
         : "/onboarding/interests";
       router.push(nextPath);
-    } catch (error) {
-      toast.error(
-        getApiResponseError(error, {
-          fallback: "Failed to save organization. Please try again.",
-        }),
-      );
+    } catch {
+      // Handled by useSelectOrganization's onError toast.
     }
   };
 
@@ -64,9 +62,11 @@ export function OrganizationClient({ redirectUri }: OrganizationClientProps) {
       colleges={colleges.data ?? []}
       departments={departments.data ?? []}
       companies={companies.data ?? []}
-      isLoadingColleges={colleges.isLoading}
-      isLoadingDepartments={departments.isLoading}
+      isLoadingColleges={colleges.isFetching}
+      isLoadingDepartments={departments.isFetching}
       isLoadingCompanies={companies.isLoading}
+      onCollegeSearchChange={setCollegeSearch}
+      onDepartmentSearchChange={setDepartmentSearch}
       onSubmit={handleSubmit}
       isLoading={selectOrganization.isPending}
     />

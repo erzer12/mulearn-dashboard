@@ -18,6 +18,9 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  EVENT_BANNER_IMAGE_ASPECT,
+  EVENT_BANNER_IMAGE_MOBILE_PREVIEW_ASPECT,
+  EVENT_COVER_IMAGE_ASPECT,
   EVENT_FORM_DEFAULT_VALUES,
   EVENT_SCOPE_OPTIONS,
 } from "../constants/events.constants";
@@ -70,6 +73,7 @@ export function EventInlineEditForm({
     watch,
     setValue,
     setError,
+    clearErrors,
     formState: { errors, isDirty },
   } = useForm<CreateEventSchema>({
     resolver: zodResolver(updateEventSchema) as Resolver<CreateEventSchema>,
@@ -173,7 +177,7 @@ export function EventInlineEditForm({
         event.organizer.company?.name ??
         "Company"
       );
-    return "MuLearn";
+    return "µLearn";
   }, [event.organizer]);
 
   const handleValidSubmit = async (values: CreateEventSchema) => {
@@ -197,8 +201,10 @@ export function EventInlineEditForm({
       });
       hasRequiredError = true;
     }
-    if (!values.category) {
-      setError("category", {
+    // event_type is the required field; category is a nullable FK the API
+    // declares optional, and its lookup table has no event rows.
+    if (!values.event_type) {
+      setError("event_type", {
         type: "manual",
         message: "Please select an event type",
       });
@@ -312,6 +318,7 @@ export function EventInlineEditForm({
           </label>
           <Textarea
             id="inline_description"
+            maxLength={5000}
             className="rounded-xl border-border bg-background text-foreground"
             {...register("description")}
           />
@@ -392,7 +399,7 @@ export function EventInlineEditForm({
             <Controller
               control={control}
               name="category"
-              render={({ field }) => {
+              render={() => {
                 const eventTypeValue = watch("event_type");
                 const selectedType =
                   eventTypeSelectOptions.find(
@@ -454,7 +461,11 @@ export function EventInlineEditForm({
                                     categoryOptions?.[0];
 
                                   if (matchingCat) {
-                                    field.onChange(matchingCat.id);
+                                    setValue("category", matchingCat.id, {
+                                      shouldValidate: true,
+                                    });
+                                  } else {
+                                    clearErrors("category");
                                   }
                                   setValue("event_type", item.value, {
                                     shouldDirty: true,
@@ -623,6 +634,7 @@ export function EventInlineEditForm({
               value={coverImageFile}
               onChange={setCoverImageFile}
               currentUrl={event.cover_image}
+              aspectRatio={EVENT_COVER_IMAGE_ASPECT}
             />
           </div>
           <div className="space-y-2">
@@ -631,6 +643,8 @@ export function EventInlineEditForm({
               value={bannerImageFile}
               onChange={setBannerImageFile}
               currentUrl={event.banner_image}
+              aspectRatio={EVENT_BANNER_IMAGE_ASPECT}
+              previewAspect={EVENT_BANNER_IMAGE_MOBILE_PREVIEW_ASPECT}
             />
           </div>
         </div>
@@ -719,6 +733,7 @@ export function EventInlineEditForm({
               className="rounded-xl border-border bg-background text-foreground"
               value={tagInput}
               placeholder="Add a tag"
+              maxLength={30}
               onChange={(e) => setTagInput(e.target.value)}
             />
             <Button
@@ -750,6 +765,7 @@ export function EventInlineEditForm({
                 {tag}
                 <Button
                   variant="ghost"
+                  className="h-5 w-5 text-foreground hover:text-destructive"
                   aria-label={`Remove tag ${tag}`}
                   size="icon"
                   type="button"

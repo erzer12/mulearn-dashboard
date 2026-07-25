@@ -17,6 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ImageUpload } from "@/components/ui/image-upload";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -32,6 +33,11 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  IG_COVER_IMAGE_ASPECT,
+  IG_ICON_IMAGE_ASPECT,
+  IG_IMAGE_MAX_MB,
+} from "../constants/ig-images.constants";
 import { useIGRequests } from "../hooks/use-ig-requests";
 
 export function IGRequestTable() {
@@ -57,8 +63,26 @@ export function IGRequestTable() {
     name: "",
     code: "",
     category: "coder",
-    icon: "",
   });
+  const [coverImageFile, setCoverImageFile] = useState<File | null>(null);
+  const [iconImageFile, setIconImageFile] = useState<File | null>(null);
+  // Guards the Approve/Reject/Cancel buttons against rapid double-clicks
+  // firing the status-update mutation (and its toast) twice.
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+
+  const handleUpdateStatus = async (
+    id: string,
+    newStatus: "active" | "requested" | "cancelled" | "rejected",
+  ) => {
+    setIsUpdatingStatus(true);
+    try {
+      await updateStatus(id, newStatus);
+    } catch {
+      // Error toast handled by the hook
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  };
 
   const handleSortChange = (column: string) => {
     setPage(1);
@@ -177,7 +201,8 @@ export function IGRequestTable() {
                 size="sm"
                 variant="outline"
                 className="h-8 px-2.5 text-primary border-primary/30 hover:bg-primary/10 hover:text-primary dark:text-primary dark:border-primary/40 dark:hover:bg-primary/15"
-                onClick={() => updateStatus(String(row.id), "active")}
+                onClick={() => handleUpdateStatus(String(row.id), "active")}
+                disabled={isUpdatingStatus}
               >
                 <Check className="size-4" />
               </Button>
@@ -191,7 +216,8 @@ export function IGRequestTable() {
                 size="sm"
                 variant="outline"
                 className="h-8 px-2.5 text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive dark:text-destructive dark:border-destructive/40 dark:hover:bg-destructive/15"
-                onClick={() => updateStatus(String(row.id), "rejected")}
+                onClick={() => handleUpdateStatus(String(row.id), "rejected")}
+                disabled={isUpdatingStatus}
               >
                 <X className="size-4" />
               </Button>
@@ -205,7 +231,8 @@ export function IGRequestTable() {
                 size="sm"
                 variant="outline"
                 className="h-8 px-2.5 text-muted-foreground border-border hover:bg-muted/40 hover:text-foreground"
-                onClick={() => updateStatus(String(row.id), "cancelled")}
+                onClick={() => handleUpdateStatus(String(row.id), "cancelled")}
+                disabled={isUpdatingStatus}
               >
                 <Ban className="size-4" />
               </Button>
@@ -218,16 +245,16 @@ export function IGRequestTable() {
   };
 
   const handleSubmitRequest = async () => {
-    if (
-      !requestForm.name.trim() ||
-      !requestForm.code.trim() ||
-      !requestForm.icon.trim()
-    )
-      return;
+    if (!requestForm.name.trim() || !requestForm.code.trim()) return;
     try {
-      await submitRequest(requestForm);
+      await submitRequest(requestForm, {
+        coverImage: coverImageFile,
+        iconImage: iconImageFile,
+      });
       setIsRequestDialogOpen(false);
-      setRequestForm({ name: "", code: "", category: "coder", icon: "" });
+      setRequestForm({ name: "", code: "", category: "coder" });
+      setCoverImageFile(null);
+      setIconImageFile(null);
     } catch {
       // Error toast handled by the hook
     }
@@ -372,16 +399,23 @@ export function IGRequestTable() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="req-icon">
-                Icon <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="req-icon"
-                placeholder="e.g. lightning or https://example.com/icon.png"
-                value={requestForm.icon}
-                onChange={(e) =>
-                  setRequestForm((p) => ({ ...p, icon: e.target.value }))
-                }
+              <Label>Cover image (optional)</Label>
+              <ImageUpload
+                value={coverImageFile}
+                onChange={setCoverImageFile}
+                maxSizeMB={IG_IMAGE_MAX_MB}
+                aspectRatio={IG_COVER_IMAGE_ASPECT}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Icon image (optional)</Label>
+              <ImageUpload
+                value={iconImageFile}
+                onChange={setIconImageFile}
+                maxSizeMB={IG_IMAGE_MAX_MB}
+                aspectRatio={IG_ICON_IMAGE_ASPECT}
+                cropShape="round"
               />
             </div>
           </div>
@@ -399,8 +433,7 @@ export function IGRequestTable() {
               disabled={
                 isSubmitting ||
                 !requestForm.name.trim() ||
-                !requestForm.code.trim() ||
-                !requestForm.icon.trim()
+                !requestForm.code.trim()
               }
             >
               {isSubmitting && <Loader2 className="mr-2 size-4 animate-spin" />}

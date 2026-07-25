@@ -3,11 +3,12 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Camera } from "lucide-react";
 import Image from "next/image";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { extractDjangoMessage } from "@/api/errors";
 import { Button } from "@/components/ui/button";
+import { Combobox } from "@/components/ui/combobox";
 import {
   Dialog,
   DialogContent,
@@ -23,6 +24,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { ImageCropDialog } from "@/components/ui/image-crop-dialog";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -33,9 +35,9 @@ import {
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { MultiSelectDropdown } from "@/features/manage-users/components";
-import { useDepartments } from "@/features/settings";
 import {
   MAX_IMAGE_UPLOAD_LABEL,
+  MAX_IMAGE_UPLOAD_MB,
   validateImageFile,
 } from "@/lib/constants/upload";
 import {
@@ -128,6 +130,15 @@ export function EditProfileModal({
     },
   });
 
+  const [avatarCropSourceUrl, setAvatarCropSourceUrl] = useState<string | null>(
+    null,
+  );
+
+  const closeAvatarCropDialog = () => {
+    if (avatarCropSourceUrl) URL.revokeObjectURL(avatarCropSourceUrl);
+    setAvatarCropSourceUrl(null);
+  };
+
   const countryId = form.watch("country_id") || "";
   const stateId = form.watch("state_id") || "";
   const districtId = form.watch("district_id") || "";
@@ -139,7 +150,6 @@ export function EditProfileModal({
   const { data: states = [] } = useStates(countryId);
   const { data: districts = [] } = useDistricts(stateId);
   const { data: organizationData } = useOrganizationData(districtId);
-  const { data: allDepartments = [] } = useDepartments();
 
   const currentOrgRaw = profile.college_id || "";
   const collegeOrgDisplayName = profile.college_code || currentOrgRaw;
@@ -168,8 +178,6 @@ export function EditProfileModal({
     profile.department?.name ||
     editableProfile?.department?.title ||
     editableProfile?.department?.name ||
-    allDepartments.find((department) => department.id === currentDepartmentRaw)
-      ?.title ||
     currentDepartmentRaw;
   const currentDepartmentOption: LocationOption | null = currentDepartmentRaw
     ? {
@@ -193,6 +201,15 @@ export function EditProfileModal({
     (option, index, list) =>
       list.findIndex((candidate) => candidate.value === option.value) === index,
   );
+
+  const organizationOptions = organizations.map((option) => ({
+    id: option.value,
+    title: option.label,
+  }));
+  const departmentOptions = departments.map((option) => ({
+    id: option.value,
+    title: option.label,
+  }));
 
   useEffect(() => {
     if (!open) return;
@@ -404,7 +421,7 @@ export function EditProfileModal({
                       return;
                     }
 
-                    form.setValue("profile_pic", file, { shouldDirty: true });
+                    setAvatarCropSourceUrl(URL.createObjectURL(file));
                   }}
                 />
                 <p className="text-xs text-muted-foreground">
@@ -678,33 +695,21 @@ export function EditProfileModal({
                     render={({ field }) => (
                       <FormItem className="min-w-0 sm:col-span-2">
                         <FormLabel>College / School</FormLabel>
-                        <Select
-                          value={field.value || "__none__"}
-                          onValueChange={(value) => {
-                            form.setValue("has_college_changes", true, {
-                              shouldDirty: false,
-                            });
-                            field.onChange(value === "__none__" ? "" : value);
-                          }}
-                          disabled={!districtId && organizations.length === 0}
-                        >
-                          <FormControl>
-                            <SelectTrigger className={selectTriggerClassName}>
-                              <SelectValue placeholder="Select college / school" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent position="popper">
-                            <SelectItem value="__none__">None</SelectItem>
-                            {organizations.map((organization) => (
-                              <SelectItem
-                                key={organization.value}
-                                value={organization.value}
-                              >
-                                {organization.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <FormControl>
+                          <Combobox
+                            options={organizationOptions}
+                            value={field.value}
+                            onValueChange={(value) => {
+                              form.setValue("has_college_changes", true, {
+                                shouldDirty: false,
+                              });
+                              field.onChange(value);
+                            }}
+                            selectedLabel={collegeOrgDisplayName}
+                            placeholder="Search college / school"
+                            disabled={!districtId && organizations.length === 0}
+                          />
+                        </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -715,33 +720,21 @@ export function EditProfileModal({
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Department</FormLabel>
-                        <Select
-                          value={field.value || "__none__"}
-                          onValueChange={(value) => {
-                            form.setValue("has_college_changes", true, {
-                              shouldDirty: false,
-                            });
-                            field.onChange(value === "__none__" ? "" : value);
-                          }}
-                          disabled={!districtId && departments.length === 0}
-                        >
-                          <FormControl>
-                            <SelectTrigger className={selectTriggerClassName}>
-                              <SelectValue placeholder="Select department" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent position="popper">
-                            <SelectItem value="__none__">None</SelectItem>
-                            {departments.map((department) => (
-                              <SelectItem
-                                key={department.value}
-                                value={department.value}
-                              >
-                                {department.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <FormControl>
+                          <Combobox
+                            options={departmentOptions}
+                            value={field.value}
+                            onValueChange={(value) => {
+                              form.setValue("has_college_changes", true, {
+                                shouldDirty: false,
+                              });
+                              field.onChange(value);
+                            }}
+                            selectedLabel={currentDepartmentDisplayName}
+                            placeholder="Search department"
+                            disabled={!districtId && departments.length === 0}
+                          />
+                        </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -781,6 +774,20 @@ export function EditProfileModal({
             </div>
           </form>
         </Form>
+
+        {avatarCropSourceUrl ? (
+          <ImageCropDialog
+            open
+            imageSrc={avatarCropSourceUrl}
+            aspect={1}
+            outputMaxSizeMB={MAX_IMAGE_UPLOAD_MB}
+            onCropComplete={(file) => {
+              closeAvatarCropDialog();
+              form.setValue("profile_pic", file, { shouldDirty: true });
+            }}
+            onCancel={closeAvatarCropDialog}
+          />
+        ) : null}
       </DialogContent>
     </Dialog>
   );

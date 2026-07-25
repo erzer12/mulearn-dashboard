@@ -117,9 +117,21 @@ export const MentorTaskGenericResponseSchema = ApiResponseSchema(z.unknown());
 
 // ─── Task create form schema — POST tasks/ ────────────────────────────────────
 export const MentorTaskFormSchema = z.object({
-  hashtag: z.string().min(1, "Hashtag is required"),
+  hashtag: z
+    .string()
+    .min(1, "Hashtag is required")
+    .refine((val) => val.trim().length > 0, {
+      message: "Hashtag is required",
+    }),
   title: z.string().min(1, "Title is required").max(75, "Max 75 characters"),
-  karma: z.coerce.number().int().positive("Karma must be a positive integer"),
+  karma: z.coerce
+    .number()
+    .int("Karma Points must be a whole number")
+    .positive("Karma Points must be a positive number")
+    .max(
+      9999,
+      "Karma Points cannot exceed the maximum allowed value of 9,999.",
+    ),
   usage_count: z.coerce.number().int().positive().optional(),
   description: z.string().optional(),
   type: z.string().min(1, "Task type is required"),

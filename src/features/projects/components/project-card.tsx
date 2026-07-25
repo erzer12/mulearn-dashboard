@@ -8,14 +8,7 @@ import {
   Trash2,
 } from "lucide-react";
 import Image from "next/image";
-import { toast } from "sonner";
-
-function resolveMediaUrl(url: string | null | undefined): string | null {
-  if (!url) return null;
-  if (url.startsWith("http")) return url;
-  return `${process.env.NEXT_PUBLIC_DJANGO_API_URL ?? ""}${url}`;
-}
-
+import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,7 +17,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { getApiResponseError } from "@/hooks/use-get-error";
+import { resolveMediaUrl } from "@/lib/utils";
 import { useDeleteVote, useVoteProject } from "../hooks";
 import type { Project } from "../schemas";
 
@@ -136,6 +129,7 @@ export function ProjectCard({
   const upvotes = votes.filter((v) => v.vote === "upvote").length;
   const commentCount = comments.length;
   const plainDescription = stripMarkdown(project.description);
+  const creatorMuid = project.created_by_muid;
 
   const userVote = currentUserId
     ? votes.find((v) => v.user_id === currentUserId && v.vote === "upvote")
@@ -149,19 +143,9 @@ export function ProjectCard({
   const handleUpvote = () => {
     if (isPendingVote) return;
     if (hasUpvoted && userVote) {
-      removeVote.mutate(userVote.id, {
-        onError: (error) =>
-          toast.error(
-            getApiResponseError(error, { fallback: "Failed to remove vote" }),
-          ),
-      });
+      removeVote.mutate(userVote.id);
     } else {
-      vote.mutate("upvote", {
-        onError: (error) =>
-          toast.error(
-            getApiResponseError(error, { fallback: "Failed to upvote" }),
-          ),
-      });
+      vote.mutate("upvote");
     }
   };
 
@@ -274,7 +258,17 @@ export function ProjectCard({
 
             {/* Creator + time label (maps to the reference's top-right caption) */}
             <p className="max-w-[9rem] text-right text-[11px] font-medium leading-tight text-white/85">
-              {project.created_by?.trim() || "Unknown"}
+              {creatorMuid ? (
+                <Link
+                  href={`/profile/${creatorMuid}`}
+                  onClick={(e) => e.stopPropagation()}
+                  className="hover:underline"
+                >
+                  {project.created_by?.trim() || "Unknown"}
+                </Link>
+              ) : (
+                project.created_by?.trim() || "Unknown"
+              )}
               {timeAgo(project.created_at) && (
                 <>
                   <br />

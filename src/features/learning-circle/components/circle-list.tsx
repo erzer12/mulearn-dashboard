@@ -8,30 +8,63 @@
 
 "use client";
 
-import { Search } from "lucide-react";
+import { ArrowRight, Mail, Search } from "lucide-react";
+import Link from "next/link";
 import { useMemo, useState } from "react";
+import Pagination from "@/components/dashboard/table/pagination";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { StateDisplay } from "@/components/ui/state-display";
-import { useCircles } from "../hooks";
+import { useDebounce } from "@/hooks/use-debounce";
+import { useActiveInvites, useCircles, useUserCircles } from "../hooks";
 import { CircleCard } from "./circle-card";
 
 export function CircleList() {
-  const { data: circles, isLoading } = useCircles();
   const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [page, setPage] = useState(1);
+  const debouncedSearch = useDebounce(searchQuery, 300);
+  const isJoinedView = statusFilter === "joined";
 
-  const filteredCircles = useMemo(() => {
-    if (!circles) return [];
-    if (!searchQuery.trim()) return circles;
+  const { activeInvitesCount } = useActiveInvites();
+  const { data: userCircles, isLoading: userCirclesLoading } = useUserCircles();
+  const { data, isLoading: circlesLoading } = useCircles(debouncedSearch, page);
 
-    const query = searchQuery.toLowerCase();
-    return circles.filter(
+  const circles = useMemo(() => data?.circles ?? [], [data]);
+  const pagination = data?.pagination;
+
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value);
+    setPage(1);
+  };
+
+  const handleFilterChange = (value: string) => {
+    setStatusFilter(value);
+    setPage(1);
+  };
+
+  const filteredJoinedCircles = useMemo(() => {
+    if (!userCircles) return [];
+    if (!debouncedSearch.trim()) return userCircles;
+
+    const query = debouncedSearch.toLowerCase();
+    return userCircles.filter(
       (circle) =>
         circle.title.toLowerCase().includes(query) ||
         circle.ig.toLowerCase().includes(query) ||
         circle.org?.toLowerCase().includes(query),
     );
-  }, [circles, searchQuery]);
+  }, [userCircles, debouncedSearch]);
+
+  const filteredCircles = isJoinedView ? filteredJoinedCircles : circles;
+  const isLoading = isJoinedView ? userCirclesLoading : circlesLoading;
 
   if (isLoading) {
     return (
@@ -60,19 +93,58 @@ export function CircleList() {
         fontFeatureSettings: "'cv02', 'cv03', 'cv04'",
       }}
     >
-      {/* Search */}
-      <div className="relative max-w-md">
-        <Search className="absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground" />
-        <Input
-          type="search"
-          placeholder="Search circles by name, topic, or organization…"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="h-12 rounded-xl border-[1.5px] border-border bg-card pl-11 pr-4 text-[14px] text-foreground shadow-none
-            placeholder:text-muted-foreground
-            focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-primary/10 focus-visible:outline-none
-            transition-all duration-200"
-        />
+      {activeInvitesCount > 0 && (
+        <div className="flex items-center justify-between gap-4 rounded-2xl border border-primary/20 bg-primary/5 px-5 py-4 shadow-sm animate-in fade-in slide-in-from-top-4 duration-300">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10">
+              <Mail className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <h4 className="text-[14px] font-bold text-foreground">
+                You have {activeInvitesCount} pending circle{" "}
+                {activeInvitesCount === 1 ? "invitation" : "invitations"}!
+              </h4>
+              <p className="text-[12px] font-medium text-muted-foreground">
+                Accept or reject invitations to join learning circles.
+              </p>
+            </div>
+          </div>
+          <Link
+            href="/dashboard/learning-circle/invites"
+            className="inline-flex items-center gap-1 rounded-xl bg-primary px-4 py-2 text-[12px] font-bold text-primary-foreground shadow-sm transition-all hover:bg-primary/90 hover:shadow-md hover:scale-[1.02] active:scale-[0.98] shrink-0"
+          >
+            View Invitations
+            <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+        </div>
+      )}
+
+      {/* Search & Filter */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-muted-foreground" />
+          <Input
+            type="search"
+            placeholder="Search circles by name, topic, or organization…"
+            value={searchQuery}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            className="h-12 rounded-xl border-[1.5px] border-border bg-card pl-11 pr-4 text-[14px] text-foreground shadow-none
+              placeholder:text-muted-foreground
+              focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-primary/10 focus-visible:outline-none
+              transition-all duration-200"
+          />
+        </div>
+        <div className="w-full sm:w-48 shrink-0">
+          <Select value={statusFilter} onValueChange={handleFilterChange}>
+            <SelectTrigger className="h-12 w-full rounded-xl border-[1.5px] border-border bg-card px-4 py-2.5 text-[13px] font-semibold text-foreground shadow-none focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-primary/10 focus-visible:outline-none transition-all duration-200 cursor-pointer">
+              <SelectValue placeholder="Filter circles" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Circles</SelectItem>
+              <SelectItem value="joined">My Circles</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {/* Empty State */}
@@ -98,10 +170,26 @@ export function CircleList() {
               className="mb-4 break-inside-avoid lc-slide-up"
               style={{ animationDelay: `${index * 40}ms` }}
             >
-              <CircleCard circle={circle} />
+              <CircleCard circle={circle} hideJoin={isJoinedView} />
             </div>
           ))}
         </div>
+      )}
+
+      {/* Pagination — server-paginated "All Circles" view only; "My Circles" is a
+          single unpaginated fetch of the user's own circles. */}
+      {!isJoinedView && pagination && pagination.totalPages > 1 && (
+        <Pagination
+          currentPage={page}
+          totalPages={pagination.totalPages}
+          perPage={12}
+          totalCount={pagination.count}
+          currentPageCount={circles.length}
+          handlePreviousClick={() => setPage((p) => Math.max(1, p - 1))}
+          handleNextClick={() =>
+            setPage((p) => Math.min(pagination.totalPages, p + 1))
+          }
+        />
       )}
     </div>
   );

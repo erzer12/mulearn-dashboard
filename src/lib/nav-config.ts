@@ -43,6 +43,7 @@ import type { Permission } from "@/lib/auth/permissions";
 import {
   CAMPUS_MANAGEMENT_ROLES,
   DISTRICT_ROLES,
+  hasIgLeadRole,
   IG_ROLES,
   MANAGEMENT_ROLES,
   ROLES,
@@ -151,17 +152,17 @@ export const NAV_ITEMS: readonly NavItem[] = [
     section: "main",
   },
 
-  {
-    id: "learner-sessions",
-    title: "Sessions",
-    href: "/dashboard/sessions",
-    icon: CalendarDays,
-    section: "main",
-    // Visible to learners/enablers/admins/etc. — everyone except mentors (who
-    // use the mentor Sessions view) and companies.
-    dynamicCheck: (roles) =>
-      !roles.some((r) => r === ROLES.MENTOR || r === ROLES.COMPANY),
-  },
+  // {
+  //   id: "learner-sessions",
+  //   title: "Sessions",
+  //   href: "/dashboard/sessions",
+  //   icon: CalendarDays,
+  //   section: "main",
+  //   // Visible to learners/enablers/admins/etc. — everyone except mentors (who
+  //   // use the mentor Sessions view) and companies.
+  //   dynamicCheck: (roles) =>
+  //     !roles.some((r) => r === ROLES.MENTOR || r === ROLES.COMPANY),
+  // },
   {
     id: "events",
     title: "Events",
@@ -190,16 +191,16 @@ export const NAV_ITEMS: readonly NavItem[] = [
     icon: Rocket,
     section: "main",
   },
-  {
-    id: "jobs",
-    title: "Jobs",
-    href: "/dashboard/jobs",
-    icon: Briefcase,
-    section: "main",
-    // Companies use the "Job Management" view instead of the community board.
-    dynamicCheck: (roles) =>
-      !roles.some((r) => r === ROLES.MENTOR || r === ROLES.COMPANY),
-  },
+  // {
+  //   id: "jobs",
+  //   title: "Jobs",
+  //   href: "/dashboard/jobs",
+  //   icon: Briefcase,
+  //   section: "main",
+  //   // Companies use the "Job Management" view instead of the community board.
+  //   dynamicCheck: (roles) =>
+  //     !roles.some((r) => r === ROLES.MENTOR || r === ROLES.COMPANY),
+  // },
   {
     id: "talent-pool",
     title: "Talent Pool",
@@ -325,7 +326,13 @@ export const NAV_ITEMS: readonly NavItem[] = [
     icon: Users,
     section: "management",
     roles: IG_ROLES,
-    dynamicCheck: (roles) => roles.some((r) => r.endsWith(" IGLead")),
+    // The whole rule lives here on purpose. use-filtered-nav returns
+    // `dynamicCheck` whenever it is present — even when `roles` already
+    // matched — so a check that only tested the dynamic "{code} IGLead" form
+    // would hide this item from plain Admins and IG Leads.
+    dynamicCheck: (userRoles) =>
+      IG_ROLES.some((role) => userRoles.includes(role)) ||
+      hasIgLeadRole(userRoles),
   },
   {
     id: "mentor-verification",

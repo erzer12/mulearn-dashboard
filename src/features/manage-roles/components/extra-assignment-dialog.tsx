@@ -22,7 +22,8 @@ import {
 } from "@/components/ui/select";
 import { useInterestGroupsList } from "@/features/interest-groups";
 import { useGuilds } from "@/features/intern";
-import { useColleges } from "@/features/onboarding";
+import { useCollegeSearch } from "@/features/onboarding";
+import type { BulkAssignExtraPayload } from "../api/manage-roles.api";
 import type { Role, RoleUser } from "../schemas";
 
 interface ExtraAssignmentDialogProps {
@@ -30,12 +31,7 @@ interface ExtraAssignmentDialogProps {
   onOpenChange: (open: boolean) => void;
   user: RoleUser | null;
   role: Role | null;
-  onConfirm: (extraData: {
-    guild?: string;
-    mentor_tier?: string;
-    ig_ids?: string[];
-    org_id?: string;
-  }) => void;
+  onConfirm: (extraData: BulkAssignExtraPayload) => void;
   isPending?: boolean;
 }
 
@@ -48,13 +44,14 @@ export function ExtraAssignmentDialog({
   isPending = false,
 }: ExtraAssignmentDialogProps) {
   // Derived role classification — updated reactively when role changes
-  const [isIntern, setIsIntern] = React.useState(false);
-  const [isMentor, setIsMentor] = React.useState(false);
-
-  React.useEffect(() => {
+  const isIntern = React.useMemo(() => {
     const lowerTitle = role?.title.toLowerCase() ?? "";
-    setIsIntern(lowerTitle.includes("intern"));
-    setIsMentor(lowerTitle.includes("mentor"));
+    return lowerTitle.includes("intern");
+  }, [role]);
+
+  const isMentor = React.useMemo(() => {
+    const lowerTitle = role?.title.toLowerCase() ?? "";
+    return lowerTitle.includes("mentor");
   }, [role]);
 
   // Form states
@@ -62,12 +59,20 @@ export function ExtraAssignmentDialog({
   const [mentorTier, setMentorTier] = React.useState("");
   const [selectedIgs, setSelectedIgs] = React.useState<string[]>([]);
   const [orgId, setOrgId] = React.useState("");
+  const [collegeSearch, setCollegeSearch] = React.useState("");
 
   // Queries for dynamic dropdowns (enabled conditionally based on role/tier)
-  const { data: colleges = [], isLoading: isLoadingColleges } = useColleges();
-  const { data: igsResponse, isLoading: isLoadingIgs } =
-    useInterestGroupsList();
-  const { data: guilds = [], isLoading: isLoadingGuilds } = useGuilds();
+  const { data: colleges = [], isFetching: isLoadingColleges } =
+    useCollegeSearch(collegeSearch);
+  const { data: igsResponse, isLoading: isLoadingIgs } = useInterestGroupsList(
+    undefined,
+    {
+      enabled: open && isMentor && mentorTier === "IG_MENTOR",
+    },
+  );
+  const { data: guilds = [], isLoading: isLoadingGuilds } = useGuilds({
+    enabled: open && isIntern,
+  });
 
   // Map guilds to Combobox options format
   const guildOptions = React.useMemo(() => {
@@ -84,6 +89,7 @@ export function ExtraAssignmentDialog({
     setMentorTier("");
     setSelectedIgs([]);
     setOrgId("");
+    setCollegeSearch("");
   }, [open, role?.id]);
 
   // Sync: reset sub-fields when mentor tier changes
@@ -91,6 +97,7 @@ export function ExtraAssignmentDialog({
   React.useEffect(() => {
     setSelectedIgs([]);
     setOrgId("");
+    setCollegeSearch("");
   }, [mentorTier]);
 
   // Map IGs to MultiSelect options format
@@ -130,24 +137,20 @@ export function ExtraAssignmentDialog({
 
     // Compound role: both intern and mentor
     if (isIntern && isMentor) {
-      const extra: Record<string, unknown> = {
+      const extra: BulkAssignExtraPayload = {
         guild: guild.trim(),
         mentor_tier: mentorTier,
       };
       if (mentorTier === "IG_MENTOR") extra.ig_ids = selectedIgs;
       else if (mentorTier === "CAMPUS_MENTOR") extra.org_id = orgId;
-      onConfirm(extra as Parameters<typeof onConfirm>[0]);
+      onConfirm(extra);
       return;
     }
 
     if (isIntern) {
       onConfirm({ guild: guild.trim() });
     } else if (isMentor) {
-      const extra: {
-        mentor_tier: string;
-        ig_ids?: string[];
-        org_id?: string;
-      } = { mentor_tier: mentorTier };
+      const extra: BulkAssignExtraPayload = { mentor_tier: mentorTier };
       if (mentorTier === "IG_MENTOR") extra.ig_ids = selectedIgs;
       else if (mentorTier === "CAMPUS_MENTOR") extra.org_id = orgId;
       onConfirm(extra);
@@ -242,14 +245,16 @@ export function ExtraAssignmentDialog({
                     options={colleges}
                     value={orgId}
                     onValueChange={setOrgId}
-                    placeholder={
-                      isLoadingColleges
-                        ? "Loading colleges..."
-                        : "Search college..."
-                    }
+                    onSearchChange={setCollegeSearch}
+                    loading={isLoadingColleges}
+                    placeholder="Search college..."
                     searchPlaceholder="Search colleges..."
-                    emptyText="No colleges found."
-                    disabled={isPending || isLoadingColleges}
+                    emptyText={
+                      collegeSearch.trim().length < 2
+                        ? "Type your college to search"
+                        : "No colleges found."
+                    }
+                    disabled={isPending}
                   />
                 </div>
               )}

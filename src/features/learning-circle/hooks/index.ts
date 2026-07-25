@@ -8,13 +8,13 @@ export { learningCircleKeys } from "./query-keys";
 export type { CirclePermissions, CircleRole } from "./use-circle-permissions";
 export { useCirclePermissions } from "./use-circle-permissions";
 export {
+  useActiveInvites,
   useApproveMember,
   useAttendeeReport,
   useCircleDetail,
   useCircleMeetings,
   useCircleMembers,
   useCircles,
-  useColleges,
   useCreateCircle,
   useCreateMeeting,
   useDeleteAttendeeReport,
@@ -41,5 +41,6 @@ export {
   useSubmitAttendeeReport,
   useSubmitMeetingReport,
   useTransferLead,
+  useUserCircles,
   useUserMeetings,
 } from "./use-learning-circle";
