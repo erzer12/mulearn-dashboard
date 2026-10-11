@@ -1,0 +1,190 @@
+/**
+ * Problem Statement Schemas
+ *
+ * 📍 src/features/problem-statements/schemas/problem-statement.schema.ts
+ *
+ * Zod v4 schemas aligned with PROBLEM_STATEMENT_API.md.
+ * TypeScript types are inferred directly from these schemas — do not hand-write
+ * duplicate interfaces.
+ *
+ * IMPORTANT: The backend rejects any unknown field with 400 "Unknown field."
+ * Only send the fields listed here; never add extra ones.
+ *
+ * Statuses: Draft → Published → Unpublished (three-state, no Closed/Archived/Removed)
+ * Interaction: "Trying" only (single-click toggle via PUT / DELETE)
+ */
+
+import { z } from "zod";
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+export const ProblemStatementStatusSchema = z.enum([
+  "Draft",
+  "Published",
+  "Unpublished",
+]);
+
+/** Only one interaction status in the current API; more may be added later */
+export const InteractionStatusSchema = z.literal("Trying");
+
+// ─── Shared Sub-objects ──────────────────────────────────────────────────────
+
+/**
+ * Minimal company info embedded in every statement response.
+ * For statements created by an admin (not attributed to any company),
+ * this is always { id: null, name: "muLearn", logo: null }.
+ */
+export const EmbeddedCompanySchema = z.object({
+  id: z.string().nullable().optional(),
+  name: z.string(),
+  logo: z.string().nullable().optional(),
+});
+
+/** Pagination object returned by all list responses */
+export const PaginationSchema = z.object({
+  count: z.number().int(),
+  totalPages: z.number().int(),
+  isNext: z.boolean(),
+  isPrev: z.boolean(),
+  nextPage: z.number().int().nullable().optional(),
+});
+
+// ─── Core Statement Object ───────────────────────────────────────────────────
+
+/**
+ * The problem statement object returned by company and admin endpoints.
+ * Learner endpoints return the same shape WITHOUT created_by / updated_by /
+ * published_by, but WITH my_interaction ("Trying" | null).
+ */
+export const ProblemStatementSchema = z.object({
+  id: z.string().uuid(),
+  title: z.string(),
+  description: z.string(),
+  category: z.string(),
+  skills: z.array(z.string()),
+  deadline: z.string().nullable(),
+  status: ProblemStatementStatusSchema,
+  company: EmbeddedCompanySchema,
+  /** true when status === "Published" AND deadline has not passed */
+  is_open: z.boolean(),
+  /** Number of users per interaction status. Always has every status key. */
+  interaction_counts: z.record(z.string(), z.number()),
+  // Audit timestamps (company/admin responses)
+  created_by: z.string().nullable().optional(),
+  created_at: z.string().optional(),
+  updated_by: z.string().nullable().optional(),
+  updated_at: z.string().optional(),
+  published_by: z.string().nullable().optional(),
+  published_at: z.string().nullable().optional(),
+  // Learner-facing field (null = no interaction yet)
+  my_interaction: InteractionStatusSchema.nullable().optional(),
+});
+
+// ─── Interaction Sub-objects ─────────────────────────────────────────────────
+
+/**
+ * The full learner interaction object returned by
+ * GET <id>/interaction/  (null fields when no interaction exists)
+ */
+export const LearnerInteractionSchema = z.object({
+  status: InteractionStatusSchema.nullable(),
+  created_at: z.string().nullable(),
+  updated_at: z.string().nullable(),
+});
+
+/**
+ * A single learner row returned by company / admin interactions endpoints:
+ * GET company/<id>/interactions/ and GET admin/<id>/interactions/
+ */
+export const InteractionUserSchema = z.object({
+  user_id: z.string(),
+  muid: z.string(),
+  full_name: z.string(),
+  status: z.string(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+
+/** Response shape for GET company/<id>/interactions/ and admin equivalent */
+export const InteractionsResponseSchema = z.object({
+  counts: z.record(z.string(), z.number()),
+  data: z.array(InteractionUserSchema),
+  pagination: PaginationSchema,
+});
+
+// ─── Response Envelopes ──────────────────────────────────────────────────────
+
+export const ProblemStatementListResponseSchema = z.object({
+  hasError: z.boolean(),
+  statusCode: z.number(),
+  message: z.record(z.string(), z.array(z.string())).optional().nullable(),
+  response: z.object({
+    data: z.array(ProblemStatementSchema),
+    pagination: PaginationSchema,
+  }),
+});
+
+export const ProblemStatementDetailResponseSchema = z.object({
+  hasError: z.boolean(),
+  statusCode: z.number(),
+  message: z.record(z.string(), z.array(z.string())).optional().nullable(),
+  response: ProblemStatementSchema,
+});
+
+/** Generic success response with no typed payload */
+export const GenericResponseSchema = z.object({
+  hasError: z.boolean(),
+  statusCode: z.number(),
+  message: z.record(z.string(), z.array(z.string())).optional().nullable(),
+  response: z.unknown().optional(),
+});
+
+// ─── Form Payloads (strictly whitelisted — extra fields → 400) ───────────────
+
+/**
+ * Fields accepted by both POST company/ and PATCH company/<id>/.
+ * The backend de-duplicates skills case-insensitively and trims them.
+ */
+export const StatementFormSchema = z.object({
+  title: z
+    .string()
+    .min(5, "Title must be at least 5 characters")
+    .max(150, "Title must be 150 characters or fewer"),
+  description: z
+    .string()
+    .min(20, "Description must be at least 20 characters")
+    .max(20000, "Description must be 20,000 characters or fewer"),
+  category: z
+    .string()
+    .min(1, "Category is required")
+    .max(100, "Category must be 100 characters or fewer"),
+  skills: z
+    .array(
+      z.string().min(1).max(50, "Each skill must be 50 characters or fewer"),
+    )
+    .max(15, "At most 15 skills")
+    .optional()
+    .default([]),
+  deadline: z.string().nullable().optional(),
+});
+
+/** Full create payload for company users */
+export const CompanyCreateStatementSchema = StatementFormSchema;
+
+/**
+ * Full create payload for admin users.
+ * Statements are created directly for muLearn and are not attributed to any
+ * company — company_id is NOT an accepted field (causes 400 if sent).
+ */
+export const AdminCreateStatementSchema = StatementFormSchema;
+
+/** PATCH payload — all fields optional */
+export const UpdateStatementSchema = StatementFormSchema.partial();
+
+/**
+ * Payload for PUT <id>/interaction/
+ * status is optional and defaults to "Trying" on the backend.
+ */
+export const SetInteractionSchema = z.object({
+  status: InteractionStatusSchema.optional().default("Trying"),
+});

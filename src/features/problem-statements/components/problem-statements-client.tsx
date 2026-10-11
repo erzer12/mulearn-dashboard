@@ -1,0 +1,263 @@
+"use client";
+
+import { useQueryClient } from "@tanstack/react-query";
+import { LayoutDashboard, Plus } from "lucide-react";
+import Link from "next/link";
+import { useCallback, useMemo, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useUserInfo } from "@/features/auth/hooks";
+import { authStore } from "@/lib/auth";
+import { ROLES } from "@/lib/auth/roles";
+import {
+  CATEGORY_SUGGESTIONS,
+  FEED_SORT_DEFAULT,
+} from "../constants/problem-statement.constants";
+import { problemStatementKeys, useProblemStatementFeed } from "../hooks";
+import type {
+  FeedQueryParams,
+  FeedStatusFilter,
+  ProblemStatement,
+} from "../types/problem-statement.types";
+import { ProblemStatementDetailModal } from "./problem-statement-detail-modal";
+import { ProblemStatementFormDialog } from "./problem-statement-form-dialog";
+import { ProblemStatementsFilters } from "./problem-statements-filters";
+import { ProblemStatementsGrid } from "./problem-statements-grid";
+import { ProblemStatementsPagination } from "./problem-statements-pagination";
+import { ProblemStatementsTable } from "./problem-statements-table";
+
+export function ProblemStatementsClient() {
+  const queryClient = useQueryClient();
+  const [currentPage, setCurrentPage] = useState(1);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<FeedStatusFilter>("all");
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [sortBy, setSortBy] = useState<string>(FEED_SORT_DEFAULT);
+  const [viewMode, setViewMode] = useState<"board" | "table">("board");
+
+  // Dialog states
+  const [selectedStatement, setSelectedStatement] =
+    useState<ProblemStatement | null>(null);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+
+  // Auth & Roles
+  const isAuthenticated =
+    typeof window !== "undefined" ? authStore.isAuthenticated() : false;
+  const { data: userInfo } = useUserInfo();
+  const userRoles = (userInfo?.roles as string[]) ?? [];
+  const isAdmin = userRoles.includes(ROLES.ADMIN);
+  const canManage =
+    userRoles.includes(ROLES.COMPANY) || isAdmin || Boolean(userInfo?.company);
+
+  // Query parameters for public/learner feed
+  const feedParams: FeedQueryParams = {
+    pageIndex: currentPage,
+    perPage: 12,
+    search: search || undefined,
+    category: selectedCategory !== "all" ? selectedCategory : undefined,
+    open_only: statusFilter === "open" ? true : undefined,
+    sortBy,
+  };
+
+  // Feed query
+  const { data: feedData, isLoading } = useProblemStatementFeed(feedParams);
+
+  // If user selected "I'm Trying" tab, filter by my_interaction === "Trying"
+  const rawStatements = feedData?.data ?? [];
+  const statements = useMemo(() => {
+    if (statusFilter === "trying") {
+      return rawStatements.filter((s) => s.my_interaction === "Trying");
+    }
+    return rawStatements;
+  }, [rawStatements, statusFilter]);
+
+  const pagination = feedData?.pagination;
+
+  // Categories list from suggestions
+  const categories = useMemo(() => {
+    return Array.from(new Set([...CATEGORY_SUGGESTIONS]));
+  }, []);
+
+  // Handlers
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleSearch = (value: string) => {
+    setSearch(value);
+    if (currentPage !== 1) setCurrentPage(1);
+  };
+
+  const handleStatusChange = (val: FeedStatusFilter) => {
+    setStatusFilter(val);
+    if (currentPage !== 1) setCurrentPage(1);
+  };
+
+  const handleCategoryChange = (val: string) => {
+    setSelectedCategory(val);
+    if (currentPage !== 1) setCurrentPage(1);
+  };
+
+  const handleSortChange = (val: string) => {
+    setSortBy(val);
+    if (currentPage !== 1) setCurrentPage(1);
+  };
+
+  const handleViewStatement = useCallback((statement: ProblemStatement) => {
+    setSelectedStatement(statement);
+    setIsDetailModalOpen(true);
+  }, []);
+
+  const handleOpenCreate = () => {
+    setIsCreateOpen(true);
+  };
+
+  return (
+    <main className="flex-1 lc-fade-in space-y-6 pb-12">
+      {/* Sticky Top Header */}
+      <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-sm border-b border-border pt-6 pb-4 md:pt-8">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground md:text-3xl">
+              Problem Statements
+            </h1>
+            <p className="text-xs text-muted-foreground mt-1">
+              Real-world challenges from industry partners. Collaborate,
+              innovate, and showcase your solutions.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {canManage && (
+              <Button
+                variant="outline"
+                size="sm"
+                asChild
+                className="rounded-xl text-xs gap-1.5"
+              >
+                <Link href="/dashboard/manage-problem-statements">
+                  <LayoutDashboard className="h-3.5 w-3.5" />
+                  <span>Manage</span>
+                </Link>
+              </Button>
+            )}
+
+            {canManage && (
+              <Button
+                size="sm"
+                onClick={handleOpenCreate}
+                className="rounded-xl text-xs gap-1.5"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                <span>New Statement</span>
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Filters (Status pills, View mode, Search, Category, Sort) */}
+      <div className="px-1">
+        <ProblemStatementsFilters
+          statusFilter={statusFilter}
+          onStatusChange={handleStatusChange}
+          search={search}
+          onSearch={handleSearch}
+          selectedCategory={selectedCategory}
+          onCategoryChange={handleCategoryChange}
+          categories={categories}
+          sortBy={sortBy}
+          onSortChange={handleSortChange}
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+          isAuthenticated={isAuthenticated}
+        />
+      </div>
+
+      {/* Main Board View: Grid vs Table */}
+      {isLoading ? (
+        viewMode === "board" ? (
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <Skeleton className="h-80 rounded-2xl" />
+            <Skeleton className="h-80 rounded-2xl" />
+            <Skeleton className="h-80 rounded-2xl" />
+            <Skeleton className="h-80 rounded-2xl" />
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <Skeleton className="h-12 w-full rounded-xl" />
+            <Skeleton className="h-16 w-full rounded-xl" />
+            <Skeleton className="h-16 w-full rounded-xl" />
+            <Skeleton className="h-16 w-full rounded-xl" />
+          </div>
+        )
+      ) : viewMode === "board" ? (
+        <ProblemStatementsGrid
+          statements={statements}
+          onView={handleViewStatement}
+          emptyTitle={
+            statusFilter === "trying"
+              ? "You haven't tried any challenges yet"
+              : statusFilter === "open"
+                ? "No open challenges found"
+                : "No problem statements found"
+          }
+          emptyDescription={
+            statusFilter === "trying"
+              ? "Explore open challenges and click 'I'm Trying It' to track them here!"
+              : "Try adjusting your search query or filters to discover challenges."
+          }
+        />
+      ) : (
+        <ProblemStatementsTable
+          statements={statements}
+          onView={handleViewStatement}
+          emptyTitle={
+            statusFilter === "trying"
+              ? "You haven't tried any challenges yet"
+              : statusFilter === "open"
+                ? "No open challenges found"
+                : "No problem statements found"
+          }
+          emptyDescription={
+            statusFilter === "trying"
+              ? "Explore open challenges and click 'I'm Trying It' to track them here!"
+              : "Try adjusting your search query or filters to discover challenges."
+          }
+        />
+      )}
+
+      {/* Pagination */}
+      {pagination && (
+        <ProblemStatementsPagination
+          pagination={pagination}
+          currentPage={currentPage}
+          onPageChange={handlePageChange}
+          currentCount={statements.length}
+        />
+      )}
+
+      {/* Detail Modal */}
+      <ProblemStatementDetailModal
+        open={isDetailModalOpen}
+        onOpenChange={setIsDetailModalOpen}
+        statement={selectedStatement}
+      />
+
+      {/* Creation / Edit Form Dialog */}
+      <ProblemStatementFormDialog
+        open={isCreateOpen}
+        mode={isAdmin ? "admin-create" : "company-create"}
+        onClose={() => {
+          setIsCreateOpen(false);
+          queryClient.invalidateQueries({
+            queryKey: problemStatementKeys.all,
+          });
+        }}
+        onSuccess={() => setIsCreateOpen(false)}
+      />
+    </main>
+  );
+}
