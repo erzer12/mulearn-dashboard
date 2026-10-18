@@ -12,6 +12,7 @@ import type {
   AdminCreateStatementSchema,
   CompanyCreateStatementSchema,
   EmbeddedCompanySchema,
+  InteractionStatusSchema,
   InteractionsResponseSchema,
   InteractionUserSchema,
   LearnerInteractionSchema,
@@ -19,6 +20,7 @@ import type {
   ProblemStatementSchema,
   ProblemStatementStatusSchema,
   SetInteractionSchema,
+  SubmitSolutionSchema,
   UpdateStatementSchema,
 } from "../schemas/problem-statement.schema";
 
@@ -28,8 +30,8 @@ export type ProblemStatementStatus = z.infer<
   typeof ProblemStatementStatusSchema
 >;
 
-/** The only interaction status currently supported */
-export type InteractionStatus = "Trying";
+/** Interaction statuses: "Trying" or "Submitted" */
+export type InteractionStatus = z.infer<typeof InteractionStatusSchema>;
 
 // ─── Core Entity Types ────────────────────────────────────────────────────────
 
@@ -57,6 +59,7 @@ export type AdminCreateStatementPayload = z.infer<
 >;
 export type UpdateStatementPayload = z.infer<typeof UpdateStatementSchema>;
 export type SetInteractionPayload = z.infer<typeof SetInteractionSchema>;
+export type SubmitSolutionPayload = z.infer<typeof SubmitSolutionSchema>;
 
 // ─── Query Parameter Types ────────────────────────────────────────────────────
 
@@ -71,6 +74,8 @@ export interface FeedQueryParams {
   skill?: string;
   /** filter by a specific company */
   company_id?: string;
+  /** "company" or "mulearn" (admin-authored) */
+  source?: "company" | "mulearn";
   /** hide statements whose deadline has passed */
   open_only?: boolean;
   /** published_at (default, newest first), deadline, title */
@@ -84,6 +89,8 @@ export interface CompanyQueryParams {
   search?: string;
   status?: ProblemStatementStatus | "all";
   category?: string;
+  /** "company" or "mulearn" */
+  source?: "company" | "mulearn";
   /** title, created_at, updated_at, published_at, deadline */
   sortBy?: string;
 }
@@ -99,7 +106,9 @@ export interface InteractionsQueryParams {
   perPage?: number;
   /** search by user name or muid */
   search?: string;
-  /** created_at, status, name */
+  /** filter by interaction status: Trying / Submitted */
+  status?: InteractionStatus;
+  /** created_at, status, name, submitted_at */
   sortBy?: string;
 }
 
@@ -111,47 +120,4 @@ export interface PaginatedResponse<T> {
 }
 
 /** Status filter options for the public learner feed */
-export type FeedStatusFilter = "all" | "open" | "trying";
-
-// ─── General Solution Submission Types ──────────────────────────────────────
-
-export type SolutionDeliverableType =
-  | "code"
-  | "design"
-  | "deck"
-  | "document"
-  | "multimedia"
-  | "hardware"
-  | "other";
-
-export interface SolutionDeliverable {
-  id: string;
-  label: string;
-  url: string;
-  type: SolutionDeliverableType;
-}
-
-export type SubmissionStatus =
-  | "Submitted"
-  | "Under_Review"
-  | "Shortlisted"
-  | "Accepted"
-  | "Needs_Revision"
-  | "Rejected";
-
-export interface ProblemStatementSubmission {
-  id: string;
-  statementId: string;
-  userId: string;
-  muid: string;
-  fullName: string;
-  title: string;
-  primaryType: SolutionDeliverableType;
-  description: string;
-  deliverables: SolutionDeliverable[];
-  status: SubmissionStatus;
-  submittedAt: string;
-  updatedAt: string;
-  reviewFeedback?: string | null;
-  scoreOrRating?: number | null;
-}
+export type FeedStatusFilter = "all" | "open" | "trying" | "submitted";

@@ -24,8 +24,8 @@ export const ProblemStatementStatusSchema = z.enum([
   "Unpublished",
 ]);
 
-/** Only one interaction status in the current API; more may be added later */
-export const InteractionStatusSchema = z.literal("Trying");
+/** Interaction statuses supported: Trying and Submitted */
+export const InteractionStatusSchema = z.enum(["Trying", "Submitted"]);
 
 // ─── Shared Sub-objects ──────────────────────────────────────────────────────
 
@@ -54,7 +54,7 @@ export const PaginationSchema = z.object({
 /**
  * The problem statement object returned by company and admin endpoints.
  * Learner endpoints return the same shape WITHOUT created_by / updated_by /
- * published_by, but WITH my_interaction ("Trying" | null).
+ * published_by, but WITH my_interaction ("Trying" | "Submitted" | null).
  */
 export const ProblemStatementSchema = z.object({
   id: z.string().uuid(),
@@ -67,7 +67,7 @@ export const ProblemStatementSchema = z.object({
   company: EmbeddedCompanySchema,
   /** true when status === "Published" AND deadline has not passed */
   is_open: z.boolean(),
-  /** Number of users per interaction status. Always has every status key. */
+  /** Number of users per interaction status. Always has every status key: { Trying: number, Submitted: number }. */
   interaction_counts: z.record(z.string(), z.number()),
   // Audit timestamps (company/admin responses)
   created_by: z.string().nullable().optional(),
@@ -88,6 +88,8 @@ export const ProblemStatementSchema = z.object({
  */
 export const LearnerInteractionSchema = z.object({
   status: InteractionStatusSchema.nullable(),
+  submission_url: z.string().nullable().optional(),
+  submitted_at: z.string().nullable().optional(),
   created_at: z.string().nullable(),
   updated_at: z.string().nullable(),
 });
@@ -100,7 +102,9 @@ export const InteractionUserSchema = z.object({
   user_id: z.string(),
   muid: z.string(),
   full_name: z.string(),
-  status: z.string(),
+  status: InteractionStatusSchema,
+  submission_url: z.string().nullable().optional(),
+  submitted_at: z.string().nullable().optional(),
   created_at: z.string(),
   updated_at: z.string(),
 });
@@ -186,5 +190,36 @@ export const UpdateStatementSchema = StatementFormSchema.partial();
  * status is optional and defaults to "Trying" on the backend.
  */
 export const SetInteractionSchema = z.object({
-  status: InteractionStatusSchema.optional().default("Trying"),
+  status: z.literal("Trying").optional().default("Trying"),
+});
+
+/**
+ * Payload for PUT <id>/submission/
+ * Must start with https://, valid domain with TLD, no localhost, no IP, no spaces, no auth, max 500 chars.
+ */
+export const SubmitSolutionSchema = z.object({
+  submission_url: z
+    .string()
+    .min(1, "Submission URL is required")
+    .max(500, "URL must be 500 characters or fewer")
+    .regex(/^https:\/\//, "URL must start with https://")
+    .refine((url) => !/\s/.test(url), "URL cannot contain spaces")
+    .refine((url) => !/\\/.test(url), "URL cannot contain backslashes")
+    .refine((url) => !/@/.test(url), "URL cannot contain user credentials")
+    .refine((url) => {
+      try {
+        const parsed = new URL(url);
+        const host = parsed.hostname;
+        if (
+          !host ||
+          host === "localhost" ||
+          /^(\d{1,3}\.){3}\d{1,3}$/.test(host)
+        ) {
+          return false;
+        }
+        return host.includes(".");
+      } catch {
+        return false;
+      }
+    }, "Must be a valid URL with a public domain name (no localhost or IP addresses)"),
 });

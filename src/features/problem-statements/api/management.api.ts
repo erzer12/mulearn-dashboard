@@ -36,6 +36,7 @@ export async function fetchCompanyStatements(
   if (params?.search?.trim()) q.set("search", params.search.trim());
   if (params?.status && params.status !== "all") q.set("status", params.status);
   if (params?.category) q.set("category", params.category);
+  if (params?.source) q.set("source", params.source);
   if (params?.sortBy) q.set("sortBy", params.sortBy);
   const query = q.toString();
   const url = query
@@ -137,6 +138,7 @@ export async function fetchCompanyInteractions(
   if (params?.pageIndex) q.set("pageIndex", String(params.pageIndex));
   if (params?.perPage) q.set("perPage", String(params.perPage));
   if (params?.search?.trim()) q.set("search", params.search.trim());
+  if (params?.status) q.set("status", params.status);
   if (params?.sortBy) q.set("sortBy", params.sortBy);
   const query = q.toString();
   const url = query

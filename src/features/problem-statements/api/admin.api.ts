@@ -35,6 +35,7 @@ export async function adminFetchStatements(
   if (params?.search?.trim()) q.set("search", params.search.trim());
   if (params?.status && params.status !== "all") q.set("status", params.status);
   if (params?.category) q.set("category", params.category);
+  if (params?.source) q.set("source", params.source);
   if (params?.sortBy) q.set("sortBy", params.sortBy);
   if (params?.company_id) q.set("company_id", params.company_id);
   const query = q.toString();
@@ -136,6 +137,7 @@ export async function adminFetchInteractions(
   if (params?.pageIndex) q.set("pageIndex", String(params.pageIndex));
   if (params?.perPage) q.set("perPage", String(params.perPage));
   if (params?.search?.trim()) q.set("search", params.search.trim());
+  if (params?.status) q.set("status", params.status);
   if (params?.sortBy) q.set("sortBy", params.sortBy);
   const query = q.toString();
   const url = query

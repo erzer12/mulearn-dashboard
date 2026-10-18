@@ -7,7 +7,10 @@
  * Aligned with PROBLEM_STATEMENT_API.md (3 statuses, single category, skills[]).
  */
 
-import type { ProblemStatementStatus } from "../types/problem-statement.types";
+import type {
+  FeedStatusFilter,
+  ProblemStatementStatus,
+} from "../types/problem-statement.types";
 
 // ─── Feed Sort Options ────────────────────────────────────────────────────────
 
@@ -23,11 +26,12 @@ export const FEED_SORT_DEFAULT = "-published_at";
 
 export const FEED_STATUS_PILLS: Array<{
   label: string;
-  value: "all" | "open" | "trying";
+  value: FeedStatusFilter;
 }> = [
   { label: "All Challenges", value: "all" },
   { label: "Open Submissions", value: "open" },
   { label: "I'm Trying", value: "trying" },
+  { label: "Submitted", value: "submitted" },
 ];
 
 // ─── Company/Admin Manage Sort Options ───────────────────────────────────────

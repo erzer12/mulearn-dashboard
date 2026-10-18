@@ -40,8 +40,10 @@ import {
   publishCompanyStatement,
   removeInteraction,
   setInteraction,
+  submitSolution,
   unpublishCompanyStatement,
   updateCompanyStatement,
+  withdrawSubmission,
 } from "../api";
 import type {
   AdminCreateStatementPayload,
@@ -51,6 +53,7 @@ import type {
   FeedQueryParams,
   InteractionsQueryParams,
   SetInteractionPayload,
+  SubmitSolutionPayload,
   UpdateStatementPayload,
 } from "../types/problem-statement.types";
 import { problemStatementKeys } from "./query-keys";
@@ -170,6 +173,49 @@ export function useRemoveInteraction(statementId: string) {
       toast.error(
         getApiResponseError(error, {
           fallback: "Failed to remove interaction",
+        }),
+      );
+    },
+  });
+}
+
+/** PUT <id>/submission/ — submit or update solution link */
+export function useSubmitSolution(statementId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: SubmitSolutionPayload) =>
+      submitSolution(statementId, payload),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: problemStatementKeys.all,
+      });
+    },
+    onError: (error: unknown) => {
+      toast.error(
+        getApiResponseError(error, {
+          fallback: "Failed to submit solution",
+        }),
+      );
+    },
+  });
+}
+
+/** DELETE <id>/submission/ — withdraw solution link and revert to Trying */
+export function useWithdrawSubmission(statementId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => withdrawSubmission(statementId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: problemStatementKeys.all,
+      });
+    },
+    onError: (error: unknown) => {
+      toast.error(
+        getApiResponseError(error, {
+          fallback: "Failed to withdraw solution",
         }),
       );
     },

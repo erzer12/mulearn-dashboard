@@ -69,6 +69,9 @@ export function ProblemStatementsClient() {
     if (statusFilter === "trying") {
       return rawStatements.filter((s) => s.my_interaction === "Trying");
     }
+    if (statusFilter === "submitted") {
+      return rawStatements.filter((s) => s.my_interaction === "Submitted");
+    }
     return rawStatements;
   }, [rawStatements, statusFilter]);
 

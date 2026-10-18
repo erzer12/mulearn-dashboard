@@ -6,6 +6,7 @@ import {
   ExternalLink,
   FileText,
   Loader2,
+  Send,
   Share2,
   Sparkles,
   Trash2,
@@ -31,11 +32,13 @@ import { MarkdownRenderer } from "@/components/ui/markdown-renderer";
 import { Skeleton } from "@/components/ui/skeleton";
 import { authStore } from "@/lib/auth";
 import {
+  useMyInteraction,
   useProblemStatementDetail,
   useRemoveInteraction,
   useSetInteraction,
 } from "../hooks";
 import type { ProblemStatement } from "../types/problem-statement.types";
+import { ProblemStatementSubmitDialog } from "./problem-statement-submit-dialog";
 
 interface ProblemStatementDetailModalProps {
   open: boolean;
@@ -66,6 +69,7 @@ export function ProblemStatementDetailModal({
   statement: initialStatement,
 }: ProblemStatementDetailModalProps) {
   const [showWithdrawConfirm, setShowWithdrawConfirm] = useState(false);
+  const [showSubmitDialog, setShowSubmitDialog] = useState(false);
   const isAuthenticated =
     typeof window !== "undefined" ? authStore.isAuthenticated() : false;
 
@@ -76,15 +80,28 @@ export function ProblemStatementDetailModal({
     open && statementId ? statementId : undefined,
   );
 
+  const myInteractionQuery = useMyInteraction(
+    open && statementId ? statementId : "",
+  );
+  const myInteraction = myInteractionQuery.data;
+
   const setMutation = useSetInteraction(statementId);
   const removeMutation = useRemoveInteraction(statementId);
 
   const data = fullStatement ?? initialStatement;
   if (!data) return null;
 
-  const isTrying = data.my_interaction === "Trying";
+  const isSubmitted =
+    data.my_interaction === "Submitted" ||
+    myInteraction?.status === "Submitted";
+  const isTrying =
+    (data.my_interaction === "Trying" || myInteraction?.status === "Trying") &&
+    !isSubmitted;
+
+  const submissionUrl = myInteraction?.submission_url;
   const isOpen = data.is_open;
   const tryingCount = data.interaction_counts?.Trying ?? 0;
+  const submittedCount = data.interaction_counts?.Submitted ?? 0;
   const deadlineText = formatDeadline(data.deadline);
 
   const handleShare = () => {
@@ -98,7 +115,7 @@ export function ProblemStatementDetailModal({
       toast.info("Please sign in to try this challenge.");
       return;
     }
-    if (isTrying) {
+    if (isTrying || isSubmitted) {
       setShowWithdrawConfirm(true);
     } else {
       await setMutation.mutateAsync({ status: "Trying" });
@@ -290,8 +307,14 @@ export function ProblemStatementDetailModal({
           <div className="shrink-0 border-t border-border bg-background/95 backdrop-blur-md px-6 py-4 sm:px-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             {/* Left: Quick status summary */}
             <div className="flex items-center gap-2 text-xs">
-              {isTrying ? (
+              {isSubmitted ? (
                 <span className="inline-flex items-center gap-1.5 font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-2.5 py-1">
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  Solution submitted ({tryingCount} trying • {submittedCount}{" "}
+                  submitted)
+                </span>
+              ) : isTrying ? (
+                <span className="inline-flex items-center gap-1.5 font-medium text-brand-blue bg-brand-blue/10 border border-brand-blue/20 rounded-lg px-2.5 py-1">
                   <CheckCircle2 className="h-3.5 w-3.5" />
                   You're currently trying this challenge
                 </span>
@@ -322,8 +345,8 @@ export function ProblemStatementDetailModal({
                 </Link>
               </Button>
 
-              {/* Withdraw Button if currently trying */}
-              {isTrying && (
+              {/* Withdraw Button if currently trying or submitted */}
+              {(isTrying || isSubmitted) && (
                 <Button
                   variant="ghost"
                   size="sm"
@@ -336,38 +359,68 @@ export function ProblemStatementDetailModal({
                 </Button>
               )}
 
-              {/* Primary Action Button: "I'm Trying It" */}
-              <Button
-                size="sm"
-                disabled={(!isOpen && !isTrying) || isInteractionPending}
-                onClick={handleTryingToggle}
-                className={`rounded-xl text-xs h-9 px-4 font-semibold gap-1.5 transition-all shadow-xs ${
-                  isTrying
-                    ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-                    : isOpen
+              {/* Submission CTA: If submitted, allows updating link; if trying, allows submitting */}
+              {isSubmitted ? (
+                <Button
+                  size="sm"
+                  onClick={() => setShowSubmitDialog(true)}
+                  disabled={!isOpen || isInteractionPending}
+                  className="rounded-xl text-xs h-9 px-4 font-semibold gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  <span>Update Link</span>
+                </Button>
+              ) : isTrying && isOpen ? (
+                <Button
+                  size="sm"
+                  onClick={() => setShowSubmitDialog(true)}
+                  disabled={isInteractionPending}
+                  className="rounded-xl text-xs h-9 px-4 font-semibold gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90 shadow-xs"
+                >
+                  <Send className="h-3.5 w-3.5" />
+                  <span>Submit Solution</span>
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  disabled={(!isOpen && !isTrying) || isInteractionPending}
+                  onClick={handleTryingToggle}
+                  className={`rounded-xl text-xs h-9 px-4 font-semibold gap-1.5 transition-all shadow-xs ${
+                    isOpen
                       ? "bg-primary text-primary-foreground hover:bg-primary/90"
                       : "opacity-60 cursor-not-allowed"
-                }`}
-              >
-                {isInteractionPending ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : isTrying ? (
-                  <CheckCircle2 className="h-3.5 w-3.5" />
-                ) : (
-                  <Zap className="h-3.5 w-3.5" />
-                )}
-                {isTrying ? "Trying It ✓" : isOpen ? "I'm Trying It" : "Closed"}
-              </Button>
+                  }`}
+                >
+                  {isInteractionPending ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Zap className="h-3.5 w-3.5" />
+                  )}
+                  {isOpen ? "I'm Trying It" : "Closed"}
+                </Button>
+              )}
             </div>
           </div>
         </DialogContent>
       </Dialog>
 
+      {/* Submit Solution Dialog */}
+      <ProblemStatementSubmitDialog
+        open={showSubmitDialog}
+        onOpenChange={setShowSubmitDialog}
+        statement={data}
+        initialSubmissionUrl={submissionUrl}
+        isSubmitted={isSubmitted}
+        onSuccess={() => {
+          myInteractionQuery.refetch();
+        }}
+      />
+
       <ConfirmDialog
         open={showWithdrawConfirm}
         onOpenChange={setShowWithdrawConfirm}
         title="Withdraw from Challenge?"
-        description="This will remove this problem statement from your trying list. You can join again at any time while submissions remain open."
+        description="This will remove this problem statement from your challenges and clear your submitted solution link. You can join again at any time while submissions remain open."
         variant="destructive"
         confirmLabel="Withdraw"
         cancelLabel="Keep Trying"

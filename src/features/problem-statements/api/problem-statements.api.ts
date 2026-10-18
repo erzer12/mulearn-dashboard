@@ -20,6 +20,7 @@ import type {
   PaginatedResponse,
   ProblemStatement,
   SetInteractionPayload,
+  SubmitSolutionPayload,
 } from "../types/problem-statement.types";
 
 // ─── Feed ─────────────────────────────────────────────────────────────────────
@@ -51,6 +52,7 @@ function buildFeedQuery(params?: FeedQueryParams): string {
   if (params.category) q.set("category", params.category);
   if (params.skill) q.set("skill", params.skill);
   if (params.company_id) q.set("company_id", params.company_id);
+  if (params.source) q.set("source", params.source);
   if (params.open_only) q.set("open_only", "true");
   if (params.sortBy) q.set("sortBy", params.sortBy);
   return q.toString();
@@ -94,10 +96,36 @@ export async function setInteraction(
 
 /**
  * DELETE <id>/interaction/ — remove own interaction.
- * Still allowed after deadline. Returns 404 if no interaction exists.
+ * Still allowed after deadline (unless submitted after deadline, which returns 409).
  */
 export async function removeInteraction(id: string): Promise<void> {
   await apiClient.delete(endpoints.problemStatements.interactionDelete(id));
+}
+
+/**
+ * PUT <id>/submission/ — submit or replace a solution link.
+ * Allowed only while published and before deadline.
+ */
+export async function submitSolution(
+  id: string,
+  payload: SubmitSolutionPayload,
+): Promise<{
+  status: "Submitted";
+  submission_url: string;
+  submitted_at: string;
+  created_at: string;
+  updated_at: string;
+  counts: Record<string, number>;
+}> {
+  return apiClient.put(endpoints.problemStatements.submissionPut(id), payload);
+}
+
+/**
+ * DELETE <id>/submission/ — withdraw solution link and reset status back to Trying.
+ * Returns 409 after deadline (submissions are locked).
+ */
+export async function withdrawSubmission(id: string): Promise<void> {
+  await apiClient.delete(endpoints.problemStatements.submissionDelete(id));
 }
 
 /** GET <id>/interaction/counts/ — interaction counts object. */

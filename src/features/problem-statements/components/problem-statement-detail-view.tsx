@@ -6,10 +6,12 @@
  * 📍 src/features/problem-statements/components/problem-statement-detail-view.tsx
  *
  * Standalone learner page view for /dashboard/problem-statements/[idOrSlug].
- * Aligned with the layout, padding, container structure, and design system of Events pages:
+ * Aligned with PROBLEM_STATEMENT_API.md:
+ *  - Supports the 3 interaction states: none → Trying → Submitted
+ *  - Live submission display with external link preview and update modal
  *  - Full-width responsive container (px-0 py-2 lg:p-4)
  *  - Sleek Hero Banner with back navigation & live status pills
- *  - Horizontal Identity Bar with key metadata pills
+ *  - Horizontal Identity Bar with key metadata pills & breakdown counts
  *  - 2-Column responsive grid (lg:grid-cols-[minmax(0,1fr)_360px])
  *  - Content card for Overview & Markdown brief
  *  - Skills card with clean tag pills
@@ -22,7 +24,9 @@ import {
   CalendarDays,
   CheckCircle2,
   ChevronLeft,
+  ExternalLink,
   Loader2,
+  Send,
   Settings,
   Share2,
   Sparkles,
@@ -45,14 +49,28 @@ import { ROLES } from "@/lib/auth/roles";
 import {
   useAdminInteractions,
   useCompanyInteractions,
+  useMyInteraction,
   useProblemStatementDetail,
   useRemoveInteraction,
   useSetInteraction,
+  useWithdrawSubmission,
 } from "../hooks";
 import { ProblemStatementAboutSection } from "./problem-statement-about-section";
+import { ProblemStatementSubmitDialog } from "./problem-statement-submit-dialog";
 
 interface ProblemStatementDetailViewProps {
   idOrSlug: string;
+}
+
+function formatDate(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function formatDeadline(deadline: string | null): string | null {
@@ -77,6 +95,10 @@ export function ProblemStatementDetailView({
 }: ProblemStatementDetailViewProps) {
   const router = useRouter();
   const [showWithdrawConfirm, setShowWithdrawConfirm] = useState(false);
+  const [showWithdrawSubmissionConfirm, setShowWithdrawSubmissionConfirm] =
+    useState(false);
+  const [showSubmitDialog, setShowSubmitDialog] = useState(false);
+
   const isAuthenticated =
     typeof window !== "undefined" ? authStore.isAuthenticated() : false;
 
@@ -92,8 +114,13 @@ export function ProblemStatementDetailView({
   } = useProblemStatementDetail(idOrSlug);
 
   const statementId = statement?.id ?? idOrSlug;
+
+  const myInteractionQuery = useMyInteraction(statementId);
+  const myInteraction = myInteractionQuery.data;
+
   const setMutation = useSetInteraction(statementId);
   const removeMutation = useRemoveInteraction(statementId);
+  const withdrawSubmissionMutation = useWithdrawSubmission(statementId);
 
   // For admins / company owners: query interactions to show who joined
   const adminInteractionsQuery = useAdminInteractions(
@@ -167,9 +194,20 @@ export function ProblemStatementDetailView({
     );
   }
 
-  const isTrying = statement.my_interaction === "Trying";
+  const isSubmitted =
+    statement.my_interaction === "Submitted" ||
+    myInteraction?.status === "Submitted";
+  const isTrying =
+    (statement.my_interaction === "Trying" ||
+      myInteraction?.status === "Trying") &&
+    !isSubmitted;
+
+  const submissionUrl = myInteraction?.submission_url;
+  const submittedAt = myInteraction?.submitted_at;
+
   const isOpen = statement.is_open;
   const tryingCount = statement.interaction_counts?.Trying ?? 0;
+  const submittedCount = statement.interaction_counts?.Submitted ?? 0;
   const deadlineText = formatDeadline(statement.deadline);
 
   const deadlineTs = statement.deadline
@@ -197,7 +235,7 @@ export function ProblemStatementDetailView({
       toast.info("Please sign in to join this challenge.");
       return;
     }
-    if (isTrying) {
+    if (isTrying || isSubmitted) {
       setShowWithdrawConfirm(true);
     } else {
       await setMutation.mutateAsync({ status: "Trying" });
@@ -205,21 +243,27 @@ export function ProblemStatementDetailView({
     }
   };
 
-  const handleWithdraw = async () => {
+  const handleWithdrawAll = async () => {
     await removeMutation.mutateAsync();
     setShowWithdrawConfirm(false);
     toast.success("Withdrawn from this challenge.");
   };
 
+  const handleWithdrawSubmission = async () => {
+    await withdrawSubmissionMutation.mutateAsync();
+    setShowWithdrawSubmissionConfirm(false);
+  };
+
   const isInteractionPending =
-    setMutation.isPending || removeMutation.isPending;
+    setMutation.isPending ||
+    removeMutation.isPending ||
+    withdrawSubmissionMutation.isPending;
 
   return (
     <div className="w-full max-w-full overflow-x-hidden px-0 py-2 lg:p-4 min-h-[calc(100vh-6rem)]">
       <div className="mx-auto w-full space-y-5 pb-24 lg:pb-6 lc-fade-in overflow-x-hidden">
         {/* ─── Hero Banner ─── */}
         <div className="relative aspect-[16/9] w-full overflow-hidden rounded-2xl bg-foreground md:aspect-[4/1] bg-gradient-to-br from-brand-blue/30 via-slate-900/95 to-purple-900/40">
-          {/* Subtle gradient lighting */}
           <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/45 to-black/20" />
 
           {/* Top-Left Back Control */}
@@ -281,8 +325,14 @@ export function ProblemStatementDetailView({
                   {statement.category}
                 </span>
 
-                {isTrying && (
+                {isSubmitted && (
                   <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500 px-3 py-0.5 text-xs font-bold text-white shadow-xs">
+                    <CheckCircle2 className="size-3" /> Solution Submitted
+                  </span>
+                )}
+
+                {isTrying && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-brand-blue px-3 py-0.5 text-xs font-bold text-white shadow-xs">
                     <CheckCircle2 className="size-3" /> Trying It
                   </span>
                 )}
@@ -314,9 +364,10 @@ export function ProblemStatementDetailView({
           <span className="h-3 w-px bg-border" />
 
           <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
-            <Users className="size-3.5" />
-            {tryingCount}{" "}
-            {tryingCount === 1 ? "learner trying" : "learners trying"}
+            <Users className="size-3.5 text-primary" />
+            <span>{tryingCount} trying</span>
+            <span className="text-muted-foreground/40">•</span>
+            <span>{submittedCount} submitted</span>
           </span>
 
           <span className="rounded-full bg-primary/15 px-2.5 py-0.5 text-xs font-semibold text-primary ml-auto sm:ml-0">
@@ -328,6 +379,57 @@ export function ProblemStatementDetailView({
         <div className="grid gap-5 w-full max-w-full overflow-x-hidden lg:grid-cols-[minmax(0,1fr)_360px]">
           {/* Main Column */}
           <div className="min-w-0 w-full max-w-full space-y-5 overflow-x-hidden">
+            {/* If Learner has submitted, show their submission banner right at the top */}
+            {isSubmitted && submissionUrl && (
+              <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/8 p-5 shadow-xs space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-bold text-sm">
+                    <CheckCircle2 className="size-4" />
+                    <span>Your Submitted Solution</span>
+                  </div>
+                  {submittedAt && (
+                    <span className="text-xs text-muted-foreground">
+                      Submitted on {formatDate(submittedAt)}
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-xl border border-border bg-background/90 p-3.5">
+                  <a
+                    href={submissionUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 text-xs sm:text-sm font-mono text-primary hover:underline truncate max-w-full"
+                    title={submissionUrl}
+                  >
+                    <ExternalLink className="size-3.5 shrink-0 text-muted-foreground" />
+                    <span className="truncate">{submissionUrl}</span>
+                  </a>
+
+                  {isOpen && (
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setShowSubmitDialog(true)}
+                        className="rounded-xl text-xs h-8"
+                      >
+                        Update Link
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setShowWithdrawSubmissionConfirm(true)}
+                        className="rounded-xl text-xs h-8 text-destructive hover:bg-destructive/10"
+                      >
+                        Withdraw
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Challenge Overview & Brief Section with Read More / Read Less */}
             <ProblemStatementAboutSection description={statement.description} />
 
@@ -357,7 +459,7 @@ export function ProblemStatementDetailView({
               </div>
             )}
 
-            {/* Learners Joined & Community Section (All Together in Main Column) */}
+            {/* Learners Joined & Community Section */}
             <div className="rounded-2xl border border-border bg-card shadow-sm">
               <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-border/50">
                 <div className="flex items-center gap-2.5">
@@ -366,12 +468,11 @@ export function ProblemStatementDetailView({
                   </div>
                   <div>
                     <h2 className="text-base font-bold text-foreground">
-                      Learners Trying This Challenge
+                      Community Participants
                     </h2>
                     <p className="text-xs text-muted-foreground">
-                      {tryingCount}{" "}
-                      {tryingCount === 1 ? "learner is" : "learners are"}{" "}
-                      actively working on solutions
+                      {tryingCount} trying • {submittedCount} submitted
+                      solutions
                     </p>
                   </div>
                 </div>
@@ -422,7 +523,13 @@ export function ProblemStatementDetailView({
                               @{item.muid}
                             </td>
                             <td className="px-4 py-3 whitespace-nowrap">
-                              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                              <span
+                                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold border ${
+                                  item.status === "Submitted"
+                                    ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+                                    : "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20"
+                                }`}
+                              >
                                 <CheckCircle2 className="size-3" />{" "}
                                 {item.status}
                               </span>
@@ -436,17 +543,17 @@ export function ProblemStatementDetailView({
                   <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-xl border border-dashed border-border bg-muted/20 p-4">
                     <div className="space-y-1">
                       <p className="text-sm font-semibold text-foreground">
-                        {tryingCount === 0
+                        {tryingCount === 0 && submittedCount === 0
                           ? "Be the first learner to try this challenge!"
-                          : `${tryingCount} ${tryingCount === 1 ? "learner has" : "learners have"} started working on solutions.`}
+                          : `${tryingCount + submittedCount} learners are participating in this challenge.`}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        Click &ldquo;I&apos;m Trying It&rdquo; to add this
-                        challenge to your workspace and join fellow learners.
+                        Join fellow learners by trying the challenge and
+                        submitting your project solution link.
                       </p>
                     </div>
 
-                    {!isTrying && isOpen && (
+                    {!isTrying && !isSubmitted && isOpen && (
                       <Button
                         size="sm"
                         onClick={handleTryingToggle}
@@ -499,41 +606,131 @@ export function ProblemStatementDetailView({
                 </div>
               )}
 
-              {/* Primary Action Button */}
-              <Button
-                size="lg"
-                className="w-full rounded-full font-bold shadow-sm"
-                disabled={(!isOpen && !isTrying) || isInteractionPending}
-                onClick={handleTryingToggle}
-              >
-                {isInteractionPending ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : isTrying ? (
-                  <span className="inline-flex items-center gap-1.5">
-                    <CheckCircle2 className="size-4" /> Trying It ✓
-                  </span>
-                ) : isOpen ? (
-                  <span className="inline-flex items-center gap-1.5">
-                    <Zap className="size-4" /> I&apos;m Trying It
-                  </span>
-                ) : (
-                  "Submissions Closed"
-                )}
-              </Button>
+              {/* Action Buttons depending on learner status */}
+              <div className="space-y-2 pt-1">
+                {isSubmitted ? (
+                  <>
+                    <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
+                      <CheckCircle2 className="size-4 shrink-0" />
+                      <span className="font-semibold">
+                        You have submitted your solution
+                      </span>
+                    </div>
 
-              {/* Withdraw Button if currently trying */}
-              {isTrying && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowWithdrawConfirm(true)}
-                  disabled={isInteractionPending}
-                  className="w-full rounded-full text-xs text-destructive hover:bg-destructive/10"
-                >
-                  <Trash2 className="size-3.5 mr-1" />
-                  Withdraw from Challenge
-                </Button>
-              )}
+                    {isOpen && (
+                      <Button
+                        size="default"
+                        className="w-full rounded-full font-bold shadow-sm gap-2"
+                        onClick={() => setShowSubmitDialog(true)}
+                        disabled={isInteractionPending}
+                      >
+                        <ExternalLink className="size-4" />
+                        Update Solution Link
+                      </Button>
+                    )}
+
+                    {isOpen && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowWithdrawSubmissionConfirm(true)}
+                        disabled={isInteractionPending}
+                        className="w-full rounded-full text-xs text-destructive hover:bg-destructive/10"
+                      >
+                        <Trash2 className="size-3.5 mr-1.5" />
+                        Withdraw Solution (Revert to Trying)
+                      </Button>
+                    )}
+
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowWithdrawConfirm(true)}
+                      disabled={isInteractionPending}
+                      className="w-full rounded-full text-xs text-destructive hover:bg-destructive/10"
+                    >
+                      Withdraw from Challenge
+                    </Button>
+                  </>
+                ) : isTrying ? (
+                  <>
+                    {isOpen && (
+                      <Button
+                        size="lg"
+                        className="w-full rounded-full font-bold shadow-sm gap-2 bg-primary hover:bg-primary/90 text-primary-foreground"
+                        onClick={() => setShowSubmitDialog(true)}
+                        disabled={isInteractionPending}
+                      >
+                        <Send className="size-4" />
+                        Submit Solution
+                      </Button>
+                    )}
+
+                    <Button
+                      variant="outline"
+                      size="default"
+                      className="w-full rounded-full font-semibold border-brand-blue/30 text-brand-blue bg-brand-blue/5"
+                      disabled
+                    >
+                      <CheckCircle2 className="size-4 mr-2" />
+                      Currently Trying Challenge
+                    </Button>
+
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowWithdrawConfirm(true)}
+                      disabled={isInteractionPending}
+                      className="w-full rounded-full text-xs text-destructive hover:bg-destructive/10"
+                    >
+                      <Trash2 className="size-3.5 mr-1" />
+                      Withdraw from Challenge
+                    </Button>
+                  </>
+                ) : isOpen ? (
+                  <>
+                    <Button
+                      size="lg"
+                      className="w-full rounded-full font-bold shadow-sm"
+                      disabled={isInteractionPending}
+                      onClick={handleTryingToggle}
+                    >
+                      {isInteractionPending ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5">
+                          <Zap className="size-4" /> I&apos;m Trying It
+                        </span>
+                      )}
+                    </Button>
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        if (!isAuthenticated) {
+                          toast.info("Please sign in to submit a solution.");
+                          return;
+                        }
+                        setShowSubmitDialog(true);
+                      }}
+                      disabled={isInteractionPending}
+                      className="w-full rounded-full text-xs gap-1.5"
+                    >
+                      <Send className="size-3.5" />
+                      Submit Solution Directly
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    size="lg"
+                    disabled
+                    className="w-full rounded-full font-bold opacity-60"
+                  >
+                    Submissions Closed
+                  </Button>
+                )}
+              </div>
 
               {/* Share Button */}
               <Button
@@ -554,7 +751,7 @@ export function ProblemStatementDetailView({
                     Community Engagement
                   </span>
                   <span className="font-semibold text-foreground">
-                    {tryingCount} {tryingCount === 1 ? "learner" : "learners"}
+                    {tryingCount} trying • {submittedCount} submitted
                   </span>
                 </div>
               </div>
@@ -611,34 +808,79 @@ export function ProblemStatementDetailView({
                 {statement.title}
               </p>
               <p className="text-[11px] text-muted-foreground">
-                {deadlineText
-                  ? `Deadline: ${deadlineText}`
-                  : `${tryingCount} trying`}
+                {isSubmitted
+                  ? "Solution Submitted ✓"
+                  : deadlineText
+                    ? `Deadline: ${deadlineText}`
+                    : `${tryingCount} trying`}
               </p>
             </div>
-            <Button
-              size="sm"
-              disabled={(!isOpen && !isTrying) || isInteractionPending}
-              onClick={handleTryingToggle}
-              className="shrink-0 rounded-full px-5 py-2 text-xs font-semibold"
-            >
-              {isTrying ? "Trying ✓" : isOpen ? "I'm Trying It" : "Closed"}
-            </Button>
+            {isSubmitted ? (
+              <Button
+                size="sm"
+                onClick={() => setShowSubmitDialog(true)}
+                className="shrink-0 rounded-full px-5 py-2 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white"
+              >
+                Update Link
+              </Button>
+            ) : isTrying && isOpen ? (
+              <Button
+                size="sm"
+                onClick={() => setShowSubmitDialog(true)}
+                className="shrink-0 rounded-full px-5 py-2 text-xs font-semibold"
+              >
+                Submit Solution
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                disabled={(!isOpen && !isTrying) || isInteractionPending}
+                onClick={handleTryingToggle}
+                className="shrink-0 rounded-full px-5 py-2 text-xs font-semibold"
+              >
+                {isOpen ? "I'm Trying It" : "Closed"}
+              </Button>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Withdraw Confirmation Dialog */}
+      {/* Submit Solution Dialog */}
+      <ProblemStatementSubmitDialog
+        open={showSubmitDialog}
+        onOpenChange={setShowSubmitDialog}
+        statement={statement}
+        initialSubmissionUrl={submissionUrl}
+        isSubmitted={isSubmitted}
+        onSuccess={() => {
+          myInteractionQuery.refetch();
+        }}
+      />
+
+      {/* Withdraw Challenge Confirmation Dialog */}
       <ConfirmDialog
         open={showWithdrawConfirm}
         onOpenChange={setShowWithdrawConfirm}
-        title="Stop Trying This Challenge?"
-        description="This will remove this problem statement from your trying list. You can join again at any time while submissions remain open."
-        confirmLabel="Withdraw"
-        cancelLabel="Keep Trying"
+        title="Leave This Challenge?"
+        description="This will remove this problem statement from your challenges and clear any submitted solution link. You can join again at any time while submissions remain open."
+        confirmLabel="Leave Challenge"
+        cancelLabel="Stay Joined"
         variant="destructive"
-        onConfirm={handleWithdraw}
+        onConfirm={handleWithdrawAll}
         isPending={removeMutation.isPending}
+      />
+
+      {/* Withdraw Submission Confirmation Dialog */}
+      <ConfirmDialog
+        open={showWithdrawSubmissionConfirm}
+        onOpenChange={setShowWithdrawSubmissionConfirm}
+        title="Withdraw Solution?"
+        description="This will remove your solution link and revert your status back to 'Trying'. You can submit a new link anytime before the challenge deadline."
+        confirmLabel="Withdraw Solution"
+        cancelLabel="Keep Solution"
+        variant="destructive"
+        onConfirm={handleWithdrawSubmission}
+        isPending={withdrawSubmissionMutation.isPending}
       />
     </div>
   );

@@ -38,9 +38,11 @@ export function ProblemStatementCardComponent({
 }: ProblemStatementCardProps) {
   const router = useRouter();
   const deadlineText = formatDeadline(statement.deadline);
+  const isSubmitted = statement.my_interaction === "Submitted";
   const isTrying = statement.my_interaction === "Trying";
   const isOpen = statement.is_open;
-  const tryingCount = statement.interaction_counts.Trying ?? 0;
+  const tryingCount = statement.interaction_counts?.Trying ?? 0;
+  const submittedCount = statement.interaction_counts?.Submitted ?? 0;
 
   const handleClick = () => {
     if (onView) {
@@ -72,10 +74,20 @@ export function ProblemStatementCardComponent({
           </div>
         )}
 
-        {/* "Trying" indicator for learners */}
-        {!isManageView && isTrying && (
+        {/* "Submitted" indicator for learners */}
+        {!isManageView && isSubmitted && (
           <div className="absolute left-3 top-3 z-30 pointer-events-none">
-            <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 border border-emerald-500/25">
+            <span className="flex items-center gap-1 rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 backdrop-blur-xs">
+              <CheckCircle2 className="h-3 w-3" />
+              Submitted
+            </span>
+          </div>
+        )}
+
+        {/* "Trying" indicator for learners */}
+        {!isManageView && !isSubmitted && isTrying && (
+          <div className="absolute left-3 top-3 z-30 pointer-events-none">
+            <span className="flex items-center gap-1 rounded-full bg-brand-blue/20 px-2.5 py-0.5 text-[11px] font-semibold text-brand-blue border border-brand-blue/30 backdrop-blur-xs">
               <CheckCircle2 className="h-3 w-3" />
               Trying It
             </span>
@@ -83,7 +95,7 @@ export function ProblemStatementCardComponent({
         )}
 
         {/* Open/Closed tag */}
-        {!isManageView && !isTrying && (
+        {!isManageView && !isTrying && !isSubmitted && (
           <div className="absolute left-3 top-3 z-30 pointer-events-none">
             {isOpen ? (
               <span className="flex items-center gap-1 rounded-full bg-brand-blue/10 px-2.5 py-0.5 text-[11px] font-medium text-brand-blue border border-brand-blue/20">
@@ -164,7 +176,13 @@ export function ProblemStatementCardComponent({
         <div className="mt-auto flex items-center justify-between gap-2 pt-2 border-t border-border/50">
           <span className="flex items-center gap-1 text-xs text-muted-foreground">
             <Users className="h-3 w-3" />
-            {tryingCount} trying
+            <span>{tryingCount} trying</span>
+            {submittedCount > 0 && (
+              <>
+                <span className="text-muted-foreground/40">•</span>
+                <span>{submittedCount} sub</span>
+              </>
+            )}
           </span>
 
           {deadlineText ? (

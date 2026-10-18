@@ -56,6 +56,7 @@ import { getApiResponseError } from "@/hooks/use-get-error";
 import { ROLES } from "@/lib/auth/roles";
 import {
   useAdminDeleteStatement,
+  useAdminDeleteUserInteraction,
   useAdminInteractions,
   useAdminPublishStatement,
   useAdminStatementDetail,
@@ -111,6 +112,13 @@ export function ManageProblemStatementDetailView({
   const [showPublishDialog, setShowPublishDialog] = useState(false);
   const [showUnpublishDialog, setShowUnpublishDialog] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [interactionStatusFilter, setInteractionStatusFilter] = useState<
+    "all" | "Submitted" | "Trying"
+  >("all");
+  const [deletingUser, setDeletingUser] = useState<{
+    userId: string;
+    fullName: string;
+  } | null>(null);
 
   const { data: userInfo, isLoading: isUserLoading } = useUserInfo();
   const userRoles = (userInfo?.roles as string[]) ?? [];
@@ -160,6 +168,8 @@ export function ManageProblemStatementDetailView({
   const deleteAdminMutation = useAdminDeleteStatement();
   const deleteMutation = isAdmin ? deleteAdminMutation : deleteCompanyMutation;
 
+  const adminDeleteUserMutation = useAdminDeleteUserInteraction();
+
   const isLoading = isUserLoading || isDetailLoading;
 
   const interactions = interactionsData?.data ?? [];
@@ -167,18 +177,39 @@ export function ManageProblemStatementDetailView({
     interactionsData?.counts?.Trying ??
     statement?.interaction_counts?.Trying ??
     0;
+  const submittedCount =
+    interactionsData?.counts?.Submitted ??
+    statement?.interaction_counts?.Submitted ??
+    0;
   const deadlineText = formatDeadline(statement?.deadline ?? null);
 
-  // Filtered interactions by user search query
+  // Filtered interactions by user search query and status filter
   const filteredInteractions = useMemo(() => {
-    if (!searchQuery.trim()) return interactions;
+    let list = interactions;
+    if (interactionStatusFilter !== "all") {
+      list = list.filter((item) => item.status === interactionStatusFilter);
+    }
+    if (!searchQuery.trim()) return list;
     const q = searchQuery.toLowerCase().trim();
-    return interactions.filter(
+    return list.filter(
       (item) =>
         item.full_name?.toLowerCase().includes(q) ||
         item.muid?.toLowerCase().includes(q),
     );
-  }, [interactions, searchQuery]);
+  }, [interactions, searchQuery, interactionStatusFilter]);
+
+  const handleConfirmDeleteUser = async () => {
+    if (!deletingUser || !statement) return;
+    try {
+      await adminDeleteUserMutation.mutateAsync({
+        statementId: statement.id,
+        userId: deletingUser.userId,
+      });
+      setDeletingUser(null);
+    } catch {
+      // toast is handled by mutation hook
+    }
+  };
 
   // Lifecycle handlers
   const handlePublish = async () => {
@@ -411,12 +442,12 @@ export function ManageProblemStatementDetailView({
             <a
               href="#learners-section"
               className="flex items-center gap-1.5 text-primary hover:underline font-semibold"
-              title="Jump to learners list"
+              title="Jump to learners roster"
             >
               <Users className="h-3.5 w-3.5" />
               <span>
-                <strong>{tryingCount}</strong>{" "}
-                {tryingCount === 1 ? "learner trying" : "learners trying"} ↓
+                <strong>{tryingCount}</strong> trying •{" "}
+                <strong>{submittedCount}</strong> submitted ↓
               </span>
             </a>
 
@@ -469,44 +500,83 @@ export function ManageProblemStatementDetailView({
               </div>
             )}
 
-            {/* 3. Learners Who Joined & Are Trying (Combined Right Below) */}
+            {/* 3. Learners Who Joined & Are Trying / Submitted */}
             <div
               id="learners-section"
               className="rounded-2xl border border-border bg-card shadow-sm scroll-mt-6"
             >
-              <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 border-b border-border/50">
-                <div className="flex items-center gap-2.5">
-                  <div className="flex size-9 items-center justify-center rounded-xl bg-primary/10">
-                    <Users className="size-4 text-primary" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h2 className="text-base font-bold text-foreground">
-                        Learners Trying This Challenge
-                      </h2>
-                      <Badge
-                        variant="secondary"
-                        className="rounded-full px-2 py-0.5 text-xs font-semibold"
-                      >
-                        {interactions.length}
-                      </Badge>
+              <div className="flex flex-col gap-4 p-5 border-b border-border/50">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex size-9 items-center justify-center rounded-xl bg-primary/10">
+                      <Users className="size-4 text-primary" />
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      Learners actively working on solutions
-                    </p>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-base font-bold text-foreground">
+                          Learner Participants & Submissions
+                        </h2>
+                        <Badge
+                          variant="secondary"
+                          className="rounded-full px-2 py-0.5 text-xs font-semibold"
+                        >
+                          {interactions.length}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {tryingCount} actively trying • {submittedCount}{" "}
+                        submitted solution deliverables
+                      </p>
+                    </div>
                   </div>
+
+                  {/* Real-time search filter */}
+                  {interactions.length > 0 && (
+                    <div className="relative w-full sm:w-64">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+                      <Input
+                        placeholder="Search by name or MUID..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="pl-9 h-8 text-xs rounded-xl bg-background"
+                      />
+                    </div>
+                  )}
                 </div>
 
-                {/* Real-time search filter */}
+                {/* Status Filter Tabs */}
                 {interactions.length > 0 && (
-                  <div className="relative w-full sm:w-60">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
-                    <Input
-                      placeholder="Search by name or MUID..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-9 h-8 text-xs rounded-xl bg-background"
-                    />
+                  <div className="flex items-center gap-1.5 self-start rounded-xl bg-muted/50 p-1 border border-border/60">
+                    {[
+                      {
+                        label: "All",
+                        value: "all",
+                        count: interactions.length,
+                      },
+                      {
+                        label: "Submitted",
+                        value: "Submitted",
+                        count: submittedCount,
+                      },
+                      { label: "Trying", value: "Trying", count: tryingCount },
+                    ].map((tab) => (
+                      <button
+                        key={tab.value}
+                        type="button"
+                        onClick={() =>
+                          setInteractionStatusFilter(
+                            tab.value as "all" | "Submitted" | "Trying",
+                          )
+                        }
+                        className={`rounded-lg px-3 py-1 text-xs font-semibold transition-all cursor-pointer ${
+                          interactionStatusFilter === tab.value
+                            ? "bg-background text-foreground shadow-xs ring-1 ring-border"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        {tab.label} ({tab.count})
+                      </button>
+                    ))}
                   </div>
                 )}
               </div>
@@ -524,8 +594,8 @@ export function ManageProblemStatementDetailView({
                     <StateDisplay
                       variant="no-results"
                       className="rounded-2xl border border-dashed border-border bg-muted/20 py-10"
-                      title="No learners trying yet"
-                      description="When learners click 'I'm Trying It' from the public feed, they'll appear here automatically."
+                      title="No learners participating yet"
+                      description="When learners click 'I'm Trying It' or submit solution links, they'll appear here automatically."
                     />
                   </div>
                 ) : filteredInteractions.length === 0 ? (
@@ -539,10 +609,13 @@ export function ManageProblemStatementDetailView({
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => setSearchQuery("")}
+                          onClick={() => {
+                            setSearchQuery("");
+                            setInteractionStatusFilter("all");
+                          }}
                           className="rounded-xl text-xs"
                         >
-                          Clear Search
+                          Clear Filters
                         </Button>
                       }
                     />
@@ -561,9 +634,17 @@ export function ManageProblemStatementDetailView({
                           <th scope="col" className="px-4 py-3.5">
                             Status
                           </th>
-                          <th scope="col" className="px-5 py-3.5 text-right">
-                            Joined Date
+                          <th scope="col" className="px-4 py-3.5">
+                            Submission Link
                           </th>
+                          <th scope="col" className="px-5 py-3.5 text-right">
+                            Timestamp
+                          </th>
+                          {isAdmin && (
+                            <th scope="col" className="px-4 py-3.5 text-right">
+                              Action
+                            </th>
+                          )}
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border/50">
@@ -571,6 +652,7 @@ export function ManageProblemStatementDetailView({
                           const initials = (interaction.full_name || "L")
                             .slice(0, 2)
                             .toUpperCase();
+                          const isSub = interaction.status === "Submitted";
                           return (
                             <tr
                               key={interaction.user_id}
@@ -595,14 +677,80 @@ export function ManageProblemStatementDetailView({
                                 @{interaction.muid}
                               </td>
                               <td className="px-4 py-3.5 whitespace-nowrap">
-                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                                  <CheckCircle className="size-3" />
+                                <span
+                                  className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold border ${
+                                    isSub
+                                      ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+                                      : "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20"
+                                  }`}
+                                >
+                                  {isSub ? (
+                                    <CheckCircle className="size-3" />
+                                  ) : (
+                                    <Clock className="size-3" />
+                                  )}
                                   {interaction.status}
                                 </span>
                               </td>
-                              <td className="px-5 py-3.5 whitespace-nowrap text-xs text-muted-foreground text-right">
-                                {formatDate(interaction.created_at)}
+                              <td className="px-4 py-3.5">
+                                {interaction.submission_url ? (
+                                  <a
+                                    href={interaction.submission_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1.5 font-mono text-xs text-primary hover:underline max-w-[260px] truncate"
+                                    title={interaction.submission_url}
+                                  >
+                                    <ExternalLink className="size-3 shrink-0 text-muted-foreground" />
+                                    <span className="truncate">
+                                      {interaction.submission_url}
+                                    </span>
+                                  </a>
+                                ) : (
+                                  <span className="text-xs text-muted-foreground italic">
+                                    No submission link
+                                  </span>
+                                )}
                               </td>
+                              <td className="px-5 py-3.5 whitespace-nowrap text-right">
+                                {interaction.submitted_at ? (
+                                  <div>
+                                    <p className="text-xs font-medium text-foreground">
+                                      {formatDate(interaction.submitted_at)}
+                                    </p>
+                                    <p className="text-[10px] text-muted-foreground">
+                                      Submitted
+                                    </p>
+                                  </div>
+                                ) : (
+                                  <div>
+                                    <p className="text-xs text-muted-foreground">
+                                      {formatDate(interaction.created_at)}
+                                    </p>
+                                    <p className="text-[10px] text-muted-foreground">
+                                      Joined
+                                    </p>
+                                  </div>
+                                )}
+                              </td>
+                              {isAdmin && (
+                                <td className="px-4 py-3.5 whitespace-nowrap text-right">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() =>
+                                      setDeletingUser({
+                                        userId: interaction.user_id,
+                                        fullName: interaction.full_name,
+                                      })
+                                    }
+                                    className="size-8 p-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg"
+                                    title="Remove learner interaction"
+                                  >
+                                    <Trash2 className="size-3.5" />
+                                  </Button>
+                                </td>
+                              )}
                             </tr>
                           );
                         })}
@@ -836,6 +984,18 @@ export function ManageProblemStatementDetailView({
         confirmLabel="Delete Forever"
         onConfirm={handleDelete}
         isPending={deleteMutation.isPending}
+      />
+
+      {/* Delete learner interaction confirm (Admin only) */}
+      <ConfirmDialog
+        open={Boolean(deletingUser)}
+        onOpenChange={(open) => !open && setDeletingUser(null)}
+        title="Remove learner interaction?"
+        description={`This will permanently remove ${deletingUser?.fullName}'s participation and submission from this challenge.`}
+        variant="destructive"
+        confirmLabel="Remove Learner"
+        onConfirm={handleConfirmDeleteUser}
+        isPending={adminDeleteUserMutation.isPending}
       />
     </div>
   );

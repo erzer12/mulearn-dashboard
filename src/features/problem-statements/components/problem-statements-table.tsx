@@ -90,8 +90,11 @@ export function ProblemStatementsTable({
             {statements.map((statement) => {
               const deadlineText = formatDeadline(statement.deadline);
               const isOpen = statement.is_open;
+              const isSubmitted = statement.my_interaction === "Submitted";
               const isTrying = statement.my_interaction === "Trying";
-              const tryingCount = statement.interaction_counts.Trying ?? 0;
+              const tryingCount = statement.interaction_counts?.Trying ?? 0;
+              const submittedCount =
+                statement.interaction_counts?.Submitted ?? 0;
 
               return (
                 <tr
@@ -104,8 +107,14 @@ export function ProblemStatementsTable({
                     <p className="font-semibold text-xs text-foreground line-clamp-2 leading-snug">
                       {statement.title}
                     </p>
-                    {!isManageView && isTrying && (
-                      <span className="mt-1 inline-flex items-center gap-1 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+                    {!isManageView && isSubmitted && (
+                      <span className="mt-1 inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+                        <CheckCircle2 className="h-3 w-3" />
+                        Submitted
+                      </span>
+                    )}
+                    {!isManageView && !isSubmitted && isTrying && (
+                      <span className="mt-1 inline-flex items-center gap-1 text-[10px] font-medium text-brand-blue">
                         <CheckCircle2 className="h-3 w-3" />
                         Trying It
                       </span>
@@ -168,11 +177,16 @@ export function ProblemStatementsTable({
                     )}
                   </td>
 
-                  {/* Trying count */}
+                  {/* Trying / Submitted count */}
                   <td className="px-4 py-4 whitespace-nowrap text-center">
                     <span className="flex items-center justify-center gap-1 text-xs text-muted-foreground">
                       <Users className="h-3 w-3" />
-                      {tryingCount}
+                      <span>{tryingCount}</span>
+                      {submittedCount > 0 && (
+                        <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">
+                          (+{submittedCount})
+                        </span>
+                      )}
                     </span>
                   </td>
 

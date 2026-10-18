@@ -45,9 +45,11 @@ export function ProblemStatementsFilters({
   onViewModeChange,
   isAuthenticated = false,
 }: ProblemStatementsFiltersProps) {
-  // Only show "I'm Trying" pill if user is authenticated
+  // Only show "I'm Trying" and "Submitted" pills if user is authenticated
   const visiblePills = FEED_STATUS_PILLS.filter(
-    (pill) => pill.value !== "trying" || isAuthenticated,
+    (pill) =>
+      (pill.value !== "trying" && pill.value !== "submitted") ||
+      isAuthenticated,
   );
 
   return (

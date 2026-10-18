@@ -1669,9 +1669,15 @@ export const endpoints = {
     /** DELETE - Remove own interaction (still allowed after deadline) */
     interactionDelete: (id: string) =>
       `/api/v1/dashboard/problem-statements/${id}/interaction/`,
-    /** GET - Interaction counts object ({ "Trying": N }) */
+    /** GET - Interaction counts object ({ "Trying": N, "Submitted": M }) */
     interactionCounts: (id: string) =>
       `/api/v1/dashboard/problem-statements/${id}/interaction/counts/`,
+    /** PUT - Submit or replace solution link ({ submission_url: "https://..." }) */
+    submissionPut: (id: string) =>
+      `/api/v1/dashboard/problem-statements/${id}/submission/`,
+    /** DELETE - Withdraw submission (clears link and reverts status to Trying) */
+    submissionDelete: (id: string) =>
+      `/api/v1/dashboard/problem-statements/${id}/submission/`,
 
     // ── §2 Company Endpoints (company/) ─────────────────────────
     // Requires Company role + verified company. Only own company's statements.
